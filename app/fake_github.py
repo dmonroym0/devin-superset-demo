@@ -9,8 +9,8 @@ from pathlib import Path
 
 from app.github_client import GitHubError
 from app.models import (
-    CompareResult,
     FORK_REPO,
+    CompareResult,
     Issue,
     LabelSpec,
     MergeUpstreamResult,

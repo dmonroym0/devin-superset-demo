@@ -220,6 +220,11 @@ class Database:
             )
             self._connection.commit()
 
+    def delete_meta(self, key: str) -> None:
+        with self._lock:
+            self._connection.execute("DELETE FROM meta WHERE key=?", (key,))
+            self._connection.commit()
+
     def record_upstream_sync(
         self,
         started_at: float,
@@ -240,9 +245,7 @@ class Database:
 
     def latest_upstream_sync(self) -> dict[str, Any] | None:
         with self._lock:
-            row = self._connection.execute(
-                "SELECT * FROM upstream_syncs ORDER BY id DESC LIMIT 1"
-            ).fetchone()
+            row = self._connection.execute("SELECT * FROM upstream_syncs ORDER BY id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
     def record_delivery(

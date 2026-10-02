@@ -35,6 +35,23 @@ def _deps(tmp_path, *, scenario="merge"):
     return deps, github
 
 
+def test_demo_upstream_scenario_has_eight_representative_commits(tmp_path):
+    deps, github = _deps(tmp_path)
+    try:
+        commits = github._upstream["commits"]
+        subjects = [commit["subject"] for commit in commits]
+
+        assert len(commits) == 8
+        assert any(subject.startswith("feat!:") for subject in subjects)
+        assert any(subject.startswith("chore(deps): bump ") for subject in subjects)
+        assert any(commit.get("is_merge") for commit in commits)
+        assert "Improve the shared metadata query planner" in subjects
+        assert any("<script>" in subject and "[links]" in subject for subject in subjects)
+        assert {"requirements/base.txt", "requirements/development.txt"} <= set(github._upstream["files"])
+    finally:
+        deps.db.close()
+
+
 @pytest.mark.asyncio
 async def test_upstream_merge_creates_changelog_pr_and_advances_sha(tmp_path):
     deps, github = _deps(tmp_path)
@@ -125,6 +142,36 @@ async def test_changelog_pr_failure_does_not_advance_sha_and_retries(tmp_path):
 
         second = await run_upstream_sync(deps)
         assert second["outcome"] == "merged"
+        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert len(github.created_prs) == 1
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_repeated_changelog_pr_failures_keep_original_range_for_retry(tmp_path):
+    deps, github = _deps(tmp_path)
+    original_create = github.create_changelog_pr
+    calls = 0
+
+    async def fail_twice(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise GitHubError(503, "POST", "/repos/dmonroym0/superset/pulls")
+        return await original_create(*args, **kwargs)
+
+    github.create_changelog_pr = fail_twice
+    try:
+        first = await run_upstream_sync(deps)
+        second = await run_upstream_sync(deps)
+        assert first["outcome"] == "error"
+        assert second["outcome"] == "error"
+        assert deps.db.get_meta("changelog_through_sha") is None
+
+        third = await run_upstream_sync(deps)
+        assert third["outcome"] == "merged"
+        assert third["pr_url"] == "https://github.com/dmonroym0/superset/pull/900"
         assert deps.db.get_meta("changelog_through_sha") == "2" * 40
         assert len(github.created_prs) == 1
     finally:

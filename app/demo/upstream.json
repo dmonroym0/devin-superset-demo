@@ -22,43 +22,19 @@
       },
       {
         "sha": "0000000000000000000000000000000000000005",
-        "subject": "refactor: isolate database-specific filters"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000006",
-        "subject": "docs: clarify SQL Lab configuration"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000007",
-        "subject": "test: cover filter expressions"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000008",
-        "subject": "build: use secure base image"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000009",
-        "subject": "ci: update Node test matrix"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000010",
         "subject": "chore(deps): bump apache-airflow-providers-postgres from 5.8.0 to 5.9.0"
       },
       {
-        "sha": "0000000000000000000000000000000000000011",
-        "subject": "revert: revert change to async queries"
-      },
-      {
-        "sha": "0000000000000000000000000000000000000012",
+        "sha": "0000000000000000000000000000000000000006",
         "subject": "Merged PR 38497: update annotation handling",
         "is_merge": true
       },
       {
-        "sha": "0000000000000000000000000000000000000013",
+        "sha": "0000000000000000000000000000000000000007",
         "subject": "Improve the shared metadata query planner"
       },
       {
-        "sha": "0000000000000000000000000000000000000014",
+        "sha": "0000000000000000000000000000000000000008",
         "subject": "feat: support [links](javascript:alert(1)) & <script>alert(1)</script>"
       }
     ],
