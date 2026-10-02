@@ -2,6 +2,7 @@ import pytest
 
 from app.config import Settings
 from app.models import Issue, LabelSpec, Playbook, SessionInfo, SessionRequest
+from app.schema_check import load_local_triage_schema
 
 
 class FakeGitHub:
@@ -41,12 +42,20 @@ class FakeGitHub:
 class FakeDevin:
     def __init__(self):
         self.closed = False
+        self.playbooks = [
+            Playbook(
+                "fake-triage",
+                "CVE Reachability Triage (Read-Only)",
+                structured_output_schema=load_local_triage_schema(),
+            ),
+            Playbook("fake-fix", "Dependency Security Fix (superset)"),
+        ]
 
     async def list_playbooks(self) -> list[Playbook]:
-        return []
+        return self.playbooks
 
     async def get_playbook(self, playbook_id: str) -> Playbook:
-        raise NotImplementedError
+        return next(book for book in self.playbooks if book.playbook_id == playbook_id)
 
     async def create_session(self, request: SessionRequest) -> SessionInfo:
         raise NotImplementedError

@@ -9,7 +9,7 @@ COPY schemas/ ./schemas/
 COPY playbooks/ ./playbooks/
 COPY scripts* ./scripts/
 COPY pyproject.toml ./
-RUN mkdir -p /data && chown app:app /data
+RUN mkdir -p /data && chmod -R a+rX /app/schemas && chown app:app /data
 ENV APP_MODE=demo DB_PATH=/data/forkfix.db HOST=0.0.0.0 PORT=8000
 USER app
 EXPOSE 8000

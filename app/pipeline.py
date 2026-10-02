@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import logging
 from collections.abc import Awaitable, Sequence
 from typing import Protocol
@@ -12,8 +11,8 @@ from fastapi import FastAPI
 
 from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
-from app.models import TERMINAL_STATES, IssueState, Mode, RouteDecision, Stage, TriageResult
-from app.playbooks import PlaybookError, resolve_playbooks
+from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
+from app.playbooks import resolve_playbooks
 from app.triage import check_triage, start_triage
 
 logger = logging.getLogger(__name__)
@@ -43,29 +42,6 @@ class IssueActions(Protocol):
     async def clear_queued_budget(self, deps: Deps, number: int) -> None: ...
 
 
-class NoopIssueActions:
-    def render_triage_comment(self, decision, result, rejected_pr_urls=()) -> str:
-        return decision.reason
-
-    async def mark_in_progress(self, deps, number) -> None:
-        return None
-
-    async def apply_route(self, deps, number, decision, result, *, rejected_pr_urls=()) -> str | None:
-        return None
-
-    async def mark_pr_opened(self, deps, number, pr_urls) -> None:
-        return None
-
-    async def mark_needs_human(self, deps, number, reason) -> None:
-        return None
-
-    async def mark_queued_budget(self, deps, number, committed, ceiling) -> None:
-        return None
-
-    async def clear_queued_budget(self, deps, number) -> None:
-        return None
-
-
 async def _guard(deps: Deps, number: int, step: Awaitable[None]) -> None:
     try:
         await step
@@ -93,26 +69,16 @@ async def tick(deps: Deps, actions: IssueActions) -> None:
             await _guard(deps, session.issue_number, check_fix(deps, session, actions))
 
 
-def _load_actions() -> IssueActions:
-    try:
-        return importlib.import_module("app.issue_actions")  # type: ignore[return-value]
-    except ImportError:
-        logger.warning("app.issue_actions not available; GitHub-side actions are no-ops")
-        return NoopIssueActions()
-
-
 def register(app: FastAPI, deps: Deps, actions: IssueActions | None = None) -> None:
-    resolved_actions = actions if actions is not None else _load_actions()
+    if actions is None:
+        from app import issue_actions
+
+        actions = issue_actions
+    resolved_actions = actions
     app.state.issue_actions = resolved_actions
 
     async def resolve() -> None:
-        try:
-            deps.playbooks = await resolve_playbooks(deps.settings, deps.devin)
-        except PlaybookError as exc:
-            if deps.settings.mode is Mode.LIVE:
-                raise
-            logger.error("DEMO: playbook resolution failed (%s); pipeline stays idle", exc)
-            return
+        deps.playbooks = await resolve_playbooks(deps.settings, deps.devin)
         logger.info(
             "Playbooks resolved: triage=%s fix=%s", deps.playbooks.triage.title, deps.playbooks.fix.title
         )

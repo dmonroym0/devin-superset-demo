@@ -1,9 +1,13 @@
 import threading
+from copy import deepcopy
+from dataclasses import replace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.models import MANAGED_LABELS
+from app.playbooks import SchemaMismatch
 
 
 def test_health_metrics_labels_and_lifecycle(fake_github, fake_devin, test_settings):
@@ -69,3 +73,20 @@ def test_label_setup_failure_does_not_prevent_startup(fake_github, fake_devin, t
 
     with TestClient(app) as client:
         assert client.get("/healthz").status_code == 200
+
+
+def test_demo_startup_rejects_triage_schema_mismatch(fake_github, fake_devin, test_settings):
+    triage = fake_devin.playbooks[0]
+    schema = deepcopy(triage.structured_output_schema)
+    schema["properties"]["cves"]["items"]["properties"]["confidence"]["enum"].append("unexpected")
+    fake_devin.playbooks[0] = replace(triage, structured_output_schema=schema)
+    app = create_app(test_settings, github=fake_github, devin=fake_devin)
+
+    with (
+        pytest.raises(
+            SchemaMismatch,
+            match=r"properties\.cves\.items\.properties\.confidence\.enum",
+        ),
+        TestClient(app),
+    ):
+        pass

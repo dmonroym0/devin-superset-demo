@@ -55,7 +55,9 @@ def _app(tmp_path, fake_devin, **env):
             **env,
         }
     )
-    return create_app(settings, github=FakeGitHub.from_seed(), devin=fake_devin, clock=lambda: 100.0)
+    app = create_app(settings, github=FakeGitHub.from_seed(), devin=fake_devin, clock=lambda: 100.0)
+    app.state.deps.background.clear()
+    return app
 
 
 def test_valid_webhook_is_deduped_and_persists_issue(tmp_path, fake_devin):

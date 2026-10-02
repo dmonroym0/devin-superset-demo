@@ -1,9 +1,7 @@
 import asyncio
-import importlib.util
 import json
 from pathlib import Path
 
-import pytest
 from fastapi import FastAPI
 
 from app.budget import Budget
@@ -12,7 +10,7 @@ from app.db import Database
 from app.fake_devin import FakeDevin
 from app.interfaces import Deps
 from app.models import Issue, IssueState, LabelSpec, Stage
-from app.pipeline import NoopIssueActions, register, tick
+from app.pipeline import register, tick
 from app.playbooks import resolve_playbooks
 from app.triage import start_triage
 
@@ -65,7 +63,7 @@ class SeedGitHub:
         return None
 
 
-class RecordingActions(NoopIssueActions):
+class RecordingActions:
     def __init__(self):
         self.calls: list[tuple] = []
 
@@ -297,10 +295,10 @@ async def test_register_appends_startup_and_worker(tmp_path):
     assert deps.devin.requests
 
 
-async def test_register_without_issue_actions_falls_back_to_noop(tmp_path):
-    if importlib.util.find_spec("app.issue_actions") is not None:
-        pytest.skip("app.issue_actions is present")
+async def test_register_without_issue_actions_imports_module_directly(tmp_path):
     deps = await make_deps(tmp_path)
     app = FastAPI()
     register(app, deps)
-    assert isinstance(app.state.issue_actions, NoopIssueActions)
+    from app import issue_actions
+
+    assert app.state.issue_actions is issue_actions

@@ -2,12 +2,12 @@ import copy
 
 import pytest
 from fastapi import FastAPI
-from test_pipeline import make_deps
+from test_pipeline import RecordingActions, make_deps
 
 from app.config import Settings
 from app.fake_devin import FakeDevin
 from app.models import Playbook
-from app.pipeline import NoopIssueActions, register
+from app.pipeline import register
 from app.playbooks import PlaybookError, SchemaMismatch, resolve_playbooks
 from app.schema_check import load_local_triage_schema
 
@@ -87,7 +87,7 @@ async def test_live_startup_hook_raises_on_mismatch(tmp_path):
     deps.settings = Settings.from_env(
         {"APP_MODE": "live", "DEVIN_ORG_ID": "org-test", "PLAYBOOK_FIX_TITLE": "Nope"}
     )
-    register(FastAPI(), deps, NoopIssueActions())
+    register(FastAPI(), deps, RecordingActions())
     with pytest.raises(PlaybookError):
         await deps.startup[0]()
     assert deps.playbooks is None
