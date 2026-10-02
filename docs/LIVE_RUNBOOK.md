@@ -82,7 +82,7 @@ If you record, record DEMO for the walkthrough. Then show a LIVE issue that has 
 ## 6. ACU caps
 - Triage is capped at `TRIAGE_ACU_CAP` (5) and fix at `FIX_ACU_CAP` (15). Each is sent as `max_acu_limit` on session create (`app/triage.py:148`, `app/fix.py`).
 - The ledger commits the cap up front and refuses to start a session that would push the total over `ACU_CEILING`. The issue then goes to `queued_budget` with label `devin:queued-budget`.
-- The board's "ACUs consumed 0.0" means "not reported", not "free" ([#17](https://github.com/dmonroym0/devin-superset-demo/issues/17)). Check the real usage on Devin's Usage page.
+- The board's "ACUs consumed 0.0" means "not reported", not "free" ([#17](https://github.com/dmonroym0/devin-superset-demo/issues/17)). Check the real spend under Settings → Usage & Limits; it reports $ and % of quota, not ACUs per session.
 
 ## 7. A session that's stuck
 Handled automatically (`app/escalation.py`):
