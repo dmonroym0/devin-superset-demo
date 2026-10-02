@@ -152,3 +152,78 @@ def test_missing_token_exits_2_and_http_error_never_prints_token(capsys):
     assert code == 1
     assert "-> 401" in out.err
     assert TOKEN not in out.out + out.err
+
+
+def test_failed_reopen_keeps_labels_and_comments_so_rerun_reopens(capsys):
+    closed = _issue(
+        2,
+        labels=["security", "devin:fixplease", "devin:low-priority"],
+        state="closed",
+        state_reason="not_planned",
+        closed_by="daniel",
+    )
+    with respx.mock(base_url=BASE, assert_all_called=False) as router:
+        _mock_reads(router, 2, closed)
+        router.patch(f"{REPO}/issues/2").respond(500)
+        router.delete(url__regex=r".*").respond(204)
+        code, _ = _run(router, ["2", "--apply"], capsys)
+        deletes = [call for call in router.calls if call.request.method == "DELETE"]
+    assert code == 1
+    assert deletes == []
+    with respx.mock(base_url=BASE) as router:
+        _mock_reads(router, 2, closed)
+        reopen = router.patch(f"{REPO}/issues/2").respond(json={})
+        router.delete(url__regex=r".*").respond(204)
+        code, _ = _run(router, ["2", "--apply"], capsys)
+        reopened = reopen.called
+    assert code == 0
+    assert reopened
+
+
+def test_only_exact_service_comment_templates_are_deleted(capsys):
+    comments = [
+        {"id": 21, "user": ME, "body": "> Needs a human: major version bump\n\nI disagree, this is safe."},
+        {
+            "id": 22,
+            "user": ME,
+            "body": "Noted. Opened, not done: CI and review continue in the Devin session.",
+        },
+        {"id": 23, "user": ME, "body": "My summary\n\n_Automated by devin-superset-demo._"},
+        {"id": 24, "user": ME, "body": "Ping: Queued for the next retry: committed 5 / ceiling 120 ACUs."},
+        {
+            "id": 25,
+            "user": ME,
+            "body": "- <https://github.com/dmonroym0/superset/pull/101>\n\n"
+            "Opened, not done: CI and review continue in the Devin session.",
+        },
+        {"id": 26, "user": ME, "body": "Queued for the next retry: committed 115 / ceiling 120 ACUs."},
+        {"id": 27, "user": ME, "body": "Needs a human: triage confidence is low"},
+        {
+            "id": 28,
+            "user": ME,
+            "body": "### devin-superset-demo triage\n\n**Route:** Fix\n\n_Automated by devin-superset-demo._",
+        },
+    ]
+    issue = _issue(6, labels=["security"])
+    with respx.mock(base_url=BASE) as router:
+        _mock_reads(router, 6, issue, comments=comments)
+        router.delete(url__regex=r".*").respond(204)
+        code, _ = _run(router, ["6", "--apply"], capsys)
+        deleted = {call.request.url.path for call in router.calls if call.request.method == "DELETE"}
+    assert code == 0
+    assert deleted == {f"{REPO}/issues/comments/{cid}" for cid in (25, 26, 27, 28)}
+
+
+def test_recreate_removes_trigger_from_original(capsys):
+    issue = _issue(5, labels=["security", "devin:fixplease"])
+    with respx.mock(base_url=BASE, assert_all_called=True) as router:
+        _mock_reads(router, 5, issue, comments=[])
+        trigger = router.delete(f"{REPO}/issues/5/labels/devin%3Afixplease").respond(200, json=[])
+        router.post(f"{REPO}/issues").respond(
+            201, json={"number": 43, "html_url": "https://github.com/dmonroym0/superset/issues/43"}
+        )
+        code, out = _run(router, ["5", "--apply", "--recreate"], capsys)
+        removed = trigger.called
+    assert code == 0
+    assert removed
+    assert "remove label devin:fixplease" in out

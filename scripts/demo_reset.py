@@ -3,11 +3,13 @@
 The service (app/issue_actions.py) adds devin:* status labels, posts comments, and closes
 not-reachable issues as "not_planned" after adding devin:low-priority. This script removes those
 labels, deletes those comments, and reopens issues the service closed. It only touches the issue
-numbers passed in. Pass --recreate to also open a fresh copy with the same title and body.
+numbers passed in. Pass --recreate to also open a fresh copy with the same title and body; the
+original then loses devin:fixplease so the service does not pick it up again.
 """
 
 import argparse
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -26,11 +28,11 @@ SERVICE_LABELS = (
     "devin:queued-budget",
     "devin:triage-rejected",
 )
-SERVICE_COMMENT_MARKERS = (
-    "_Automated by devin-superset-demo._",
-    "Opened, not done: CI and review continue in the Devin session.",
-    "Needs a human: ",
-    "Queued for the next retry: committed ",
+SERVICE_COMMENT_TEMPLATES = (
+    re.compile(r"### devin-superset-demo triage\n.*\n_Automated by devin-superset-demo\._", re.DOTALL),
+    re.compile(r"(?:- [^\n]*\n)+\nOpened, not done: CI and review continue in the Devin session\."),
+    re.compile(r"Needs a human: [^\n]*"),
+    re.compile(r"Queued for the next retry: committed \d+ / ceiling \d+ ACUs\."),
 )
 
 
@@ -48,14 +50,20 @@ class Plan:
 def is_service_comment(comment: Mapping, actor: str) -> bool:
     body = comment.get("body") or ""
     author = (comment.get("user") or {}).get("login")
-    return author == actor and any(marker in body for marker in SERVICE_COMMENT_MARKERS)
+    return author == actor and any(template.fullmatch(body) for template in SERVICE_COMMENT_TEMPLATES)
 
 
 def build_plan(
-    issue: Mapping, comments: Sequence[Mapping], actor: str, *, remove_trigger: bool, keep_comments: bool
+    issue: Mapping,
+    comments: Sequence[Mapping],
+    actor: str,
+    *,
+    remove_trigger: bool,
+    keep_comments: bool,
+    recreate: bool = False,
 ) -> Plan:
     labels = [label["name"] for label in issue.get("labels", [])]
-    removable = set(SERVICE_LABELS) | ({TRIGGER_LABEL} if remove_trigger else set())
+    removable = set(SERVICE_LABELS) | ({TRIGGER_LABEL} if remove_trigger or recreate else set())
     closed_by = (issue.get("closed_by") or {}).get("login")
     plan = Plan(number=issue["number"], title=issue.get("title") or "", body=issue.get("body") or "")
     plan.remove_labels = [name for name in labels if name in removable]
@@ -90,6 +98,8 @@ def _paginate(client: httpx.Client, path: str) -> list[dict]:
 
 def apply_plan(client: httpx.Client, repo: str, plan: Plan, *, recreate: bool) -> str | None:
     issue_path = f"/repos/{repo}/issues/{plan.number}"
+    if plan.reopen:
+        client.patch(issue_path, json={"state": "open"}).raise_for_status()
     for name in plan.remove_labels:
         response = client.delete(f"{issue_path}/labels/{quote(name, safe='')}")
         if response.status_code != 404:
@@ -98,8 +108,6 @@ def apply_plan(client: httpx.Client, repo: str, plan: Plan, *, recreate: bool) -
         response = client.delete(f"/repos/{repo}/issues/comments/{comment_id}")
         if response.status_code != 404:
             response.raise_for_status()
-    if plan.reopen:
-        client.patch(issue_path, json={"state": "open"}).raise_for_status()
     if not recreate:
         return None
     response = client.post(
@@ -112,10 +120,10 @@ def apply_plan(client: httpx.Client, repo: str, plan: Plan, *, recreate: bool) -
 
 def describe(plan: Plan, *, recreate: bool) -> list[str]:
     lines = [f"#{plan.number} {plan.title}"]
-    lines += [f"  remove label {name}" for name in plan.remove_labels]
-    lines += [f"  delete service comment {cid}: {first}" for cid, first in plan.delete_comments]
     if plan.reopen:
         lines.append("  reopen (closed as not_planned by the service)")
+    lines += [f"  remove label {name}" for name in plan.remove_labels]
+    lines += [f"  delete service comment {cid}: {first}" for cid, first in plan.delete_comments]
     if recreate:
         lines.append(f"  create fresh copy (same title and body, labels {plan.copy_labels or 'none'})")
     if len(lines) == 1:
@@ -130,7 +138,11 @@ def main(
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("issues", nargs="+", type=int, help="fork issue numbers to reset")
     parser.add_argument("--apply", action="store_true", help="make the changes (default: dry run)")
-    parser.add_argument("--recreate", action="store_true", help="also open a fresh copy of each issue")
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help=f"also open a fresh copy of each issue and remove {TRIGGER_LABEL} from the original",
+    )
     parser.add_argument("--remove-trigger", action="store_true", help=f"also remove {TRIGGER_LABEL}")
     parser.add_argument("--keep-comments", action="store_true", help="do not delete service comments")
     parser.add_argument("--repo", default=DEFAULT_REPO)
@@ -171,6 +183,7 @@ def main(
                     actor,
                     remove_trigger=args.remove_trigger,
                     keep_comments=args.keep_comments,
+                    recreate=args.recreate,
                 )
                 print("\n".join(describe(plan, recreate=args.recreate)))
                 if args.apply:
