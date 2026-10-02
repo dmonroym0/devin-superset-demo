@@ -17,7 +17,7 @@ from app.changelog import (
     prepend,
     render_section,
 )
-from app.github_client import GitHubError
+from app.github_client import GitHubError, redact_secrets
 from app.interfaces import Deps
 from app.models import FORK_REPO, LABEL_NEEDS_HUMAN, UPSTREAM_REPO
 from app.request_security import is_allowed_local_request
@@ -29,7 +29,7 @@ _PENDING_OUTCOME = "changelog_pending_outcome"
 
 
 def _normalize_message(message: str) -> str:
-    return " ".join(message.split())[:300] or "no message"
+    return " ".join(redact_secrets(message).split())[:300] or "no message"
 
 
 def branch_meta_key(name: str, branch: str) -> str:

@@ -500,6 +500,45 @@ def test_github_sync_error_message_is_visible_in_detail(tmp_path):
     assert metrics["last_detail"] == sync_detail_expected
 
 
+def test_github_sync_error_message_is_redacted_in_detail(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "github-error-redacted.db"),
+            "UPSTREAM_SYNC_ENABLED": "true",
+        }
+    )
+    github = FakeGitHub.from_seed()
+    leaked_token = "ghp_" + "j" * 24
+    message = f"Workflow permission is required; credential: {leaked_token}"
+
+    async def fail_merge(branch):
+        raise GitHubError(
+            403,
+            "POST",
+            f"/repos/dmonroym0/superset/merge-upstream?branch={branch}",
+            message=message,
+        )
+
+    github.merge_upstream = fail_merge
+    app = create_app(settings, github=github, devin=FakeDevin.from_scenarios())
+    app.state.deps.background[:] = [
+        task for task in app.state.deps.background if task.__name__ != "upstream_sync_loop"
+    ]
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/sync-upstream")
+        metrics = client.get("/metrics.json").json()["upstream_sync"]
+        sync_detail = app.state.deps.db.latest_upstream_sync()["detail"]
+
+    response_detail = response.json()["detail"]
+    assert response.status_code == 502
+    assert all(
+        leaked_token not in detail for detail in (sync_detail, response_detail, metrics["last_detail"])
+    )
+    assert all("[redacted]" in detail for detail in (sync_detail, response_detail, metrics["last_detail"]))
+
+
 def test_disabled_sync_has_no_loop_and_endpoint_is_not_found(tmp_path):
     settings = Settings.from_env(
         {
