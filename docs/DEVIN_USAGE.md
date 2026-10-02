@@ -82,9 +82,11 @@ One section per capability. Each says what it did here, where to see it, and why
 - **Why:** Spend is bounded before a session starts, not discovered afterwards. The API's per-session metering read 0 in DEMO, and on Daniel's plan it also reads 0 for finished sessions. So the board's per-session "ACUs consumed 0.0" is misleading: issue #17.
 - **Daniel to confirm:** screenshot of Settings → Usage for the build period. Total spend {{TOTAL_SPEND}} (about $50 on demand plus the Pro plan's included quota).
 
-## 12. DeepWiki on the fork
-- **What:** unverified. Nothing in either repo or on GitHub references DeepWiki (`rg -i deepwiki` finds nothing).
-- **Daniel to confirm:** screenshot of the DeepWiki page for `dmonroym0/superset`, if it was used, and the session where Devin used it.
+## 12. DeepWiki (this repo, with a Spanish experiment)
+- **What:** DeepWiki indexes `dmonroym0/devin-superset-demo` and `dmonroym0/superset` (Devin's `list_wiki_repos`, 2026-10-02). `.devin/wiki.json` (added in PR #20) steers this repo's wiki: two repo notes, an English page tree, and an experimental **"Documentación en español"** section (Ciclo de vida de un issue, Presupuesto de ACU, Dashboard y telemetría, Configuración y ejecución) whose page notes require es-419, *tú*, and `docs/es/GLOSSARY.md` terms (`tope` = ceiling, `límite` = cap).
+- **Why `wiki.json` doesn't change after a regeneration:** it is an *input*. DeepWiki reads it to decide which pages to write; the generated pages live in Devin, not in git. Regenerating never writes back to the file.
+- **Evidence:** a Spanish DeepWiki question about the generated "Presupuesto de ACU" page answered in Spanish and quoted "Se alcanzó el tope: las sesiones nuevas esperan hasta que lo subas o se liberen reservas", using `tope` as the glossary requires (https://app.devin.ai/search/api_5294e9e0-f95e-43e1-bcc2-9d0c80f494f0). The wiki is at https://app.devin.ai/wiki/dmonroym0/devin-superset-demo (org login required).
+- **Open:** native-speaker review of the Spanish pages (https://github.com/dmonroym0/devin-superset-demo/issues/23).
 
 ## 13. Other AI tools
 Early on, Daniel used a general-purpose AI assistant to learn Devin's concepts and tighten his prompts without spending credit. All building was done with Devin. A coding assistant did the first pass of the urllib3 reproduction, and Daniel re-traced the code path himself (Daniel's notes).

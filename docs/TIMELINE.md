@@ -1,6 +1,6 @@
 # TIMELINE (oldest first, UTC)
 
-Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/review timestamps, `git log`. "Session" links come from PR bodies and comments. **No fork PR is merged** as of 2026-10-02 08:20 UTC.
+Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/review timestamps, `git log`. "Session" links come from PR bodies and comments. **No fork PR is merged** as of 2026-10-02 17:30 UTC.
 
 | When (UTC) | Repo | Event | Why it mattered |
 |---|---|---|---|
@@ -43,4 +43,10 @@ Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/re
 | 2026-10-02 08:03:58 | demo | PR #6 merged to main (f662d83); CI success 08:04 | State audited here. |
 | 2026-10-02 08:12:38–41 | demo | Issues #7, #8, #9 filed (cross-origin POST, stale session status, features.md README row) | Pre-audit findings, P2. |
 | 2026-10-02 08:18:26–36 | demo | Audit issues #10–#16 filed (see TEST_REPORT) | #10 (duplicate-PR risk) changes the LIVE runbook. |
-| now | fork | PRs #6, #7, #8 still **open**; fork issues #1–#5 still **open** | No CVE is fixed on fork master. |
+| 2026-10-02 08:22:43 | fork | LIVE: `devin:fixplease` added to #2 | First real run of the service against the fork. |
+| 2026-10-02 08:27:11 | fork | #2 closed `not_planned` by the service after its "Not reachable" comment (08:27:07) and `devin:low-priority` (08:27:08) | Triage saved a fix session: no CVE reachable. |
+| 2026-10-02 08:28:51 | fork | LIVE: `devin:fixplease` added to #3; route comment "Fix" at 08:34:26 | |
+| 2026-10-02 08:39:44 | fork | PR #9 opened (urllib3 2.7.0 → 2.8.0, draft) by the LIVE fix session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8; `devin:pr-opened` 08:40:02 | First PR opened end-to-end by the service. |
+| 2026-10-02 15:31:13 | fork | LIVE upstream sync: `master` d2fb52ac83 → 0fdfd6660e (45 upstream commits, no merge commit) | PRs #6–#9 still mergeable, no conflicts. |
+| 2026-10-02 15:31:17 | fork | PR #10 opened: `FORK_CHANGELOG.md` for d2fb52a..0fdfd66 | `License Check` fails: the file lacks the Apache header. |
+| now | fork | PRs #6–#10 still **open**; issue #2 closed by the service; #1, #3, #4, #5 open | No CVE is fixed on fork master. |
