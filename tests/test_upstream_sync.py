@@ -1,3 +1,6 @@
+import asyncio
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,6 +12,7 @@ from app.fake_github import FakeGitHub
 from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.main import create_app
+from app.models import LABEL_NEEDS_HUMAN, Issue, MergeUpstreamResult
 from app.upstream_sync import run_upstream_sync
 
 
@@ -121,6 +125,32 @@ async def test_closed_conflict_issue_is_replaced(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_conflict_reuses_open_matching_issue_from_github(tmp_path):
+    deps, github = _deps(tmp_path, scenario="conflict")
+    title = "Upstream sync conflict on master"
+    github.add_issue(
+        Issue(
+            number=80,
+            title=title,
+            body="A pull request, not a conflict issue.",
+            labels=(LABEL_NEEDS_HUMAN,),
+            is_pull_request=True,
+        )
+    )
+    github.add_issue(
+        Issue(number=81, title=title, body="Existing conflict issue.", labels=(LABEL_NEEDS_HUMAN,))
+    )
+    try:
+        result = await run_upstream_sync(deps)
+
+        assert result == {"outcome": "conflict", "issue_number": 81}
+        assert github.created_issues == []
+        assert deps.db.get_meta("conflict_issue_number") == "81"
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
 async def test_changelog_pr_failure_does_not_advance_sha_and_retries(tmp_path):
     deps, github = _deps(tmp_path)
     original_create = github.create_changelog_pr
@@ -176,6 +206,76 @@ async def test_repeated_changelog_pr_failures_keep_original_range_for_retry(tmp_
         assert len(github.created_prs) == 1
     finally:
         deps.db.close()
+
+
+def test_sync_endpoint_returns_busy_when_background_sync_holds_lock(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "busy.db"),
+            "UPSTREAM_SYNC_ENABLED": "true",
+            "UPSTREAM_SYNC_INTERVAL_S": "86400",
+        }
+    )
+    github = FakeGitHub.from_seed()
+    entered = threading.Event()
+    release = asyncio.Event()
+    event_loop = []
+    merge_calls = 0
+    original_merge = github.merge_upstream
+
+    async def blocked_merge(branch):
+        nonlocal merge_calls
+        merge_calls += 1
+        if merge_calls == 1:
+            event_loop.append(asyncio.get_running_loop())
+            entered.set()
+            await release.wait()
+        return await original_merge(branch)
+
+    github.merge_upstream = blocked_merge
+    app = create_app(settings, github=github, devin=FakeDevin.from_scenarios())
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        try:
+            assert entered.wait(timeout=2)
+            response = client.post("/sync-upstream")
+            assert response.status_code == 409
+            assert response.json() == {"outcome": "busy"}
+            assert merge_calls == 1
+        finally:
+            if event_loop:
+                event_loop[0].call_soon_threadsafe(release.set)
+
+
+def test_merge_upstream_error_returns_502(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "merge-error.db"),
+            "UPSTREAM_SYNC_ENABLED": "true",
+        }
+    )
+    github = FakeGitHub.from_seed()
+
+    async def error_merge(branch):
+        del branch
+        return MergeUpstreamResult("error", "simulated 422")
+
+    github.merge_upstream = error_merge
+    app = create_app(settings, github=github, devin=FakeDevin.from_scenarios())
+    app.state.deps.background[:] = [
+        task for task in app.state.deps.background if task.__name__ != "upstream_sync_loop"
+    ]
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/sync-upstream")
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "outcome": "error",
+        "error": "merge_upstream_failed",
+    }
 
 
 def test_disabled_sync_has_no_loop_and_endpoint_is_not_found(tmp_path):

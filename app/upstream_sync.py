@@ -55,26 +55,39 @@ async def _record_conflict(
     before_sha: str,
 ) -> dict:
     branch = deps.settings.upstream_sync_branch
+    title = f"Upstream sync conflict on {branch}"
     stored_number = deps.db.get_meta("conflict_issue_number")
     existing_number = int(stored_number) if stored_number and stored_number.isdecimal() else None
+    existing_issue = None
     if existing_number is not None:
         try:
-            issue = await deps.github.get_issue(existing_number)
+            existing_issue = await deps.github.get_issue(existing_number)
         except GitHubError as error:
             if error.status_code != 404:
                 raise
-            issue = None
-        if issue is not None and issue.state == "open":
-            detail = f"existing issue #{existing_number}"
-            _record(
-                deps,
-                started_at,
-                "conflict",
-                before_sha=before_sha,
-                detail=detail,
-                issue_number=existing_number,
-            )
-            return {"outcome": "conflict", "issue_number": existing_number}
+    if existing_issue is None or existing_issue.state != "open" or existing_issue.is_pull_request:
+        issues = await deps.github.list_open_issues_with_label(LABEL_NEEDS_HUMAN)
+        existing_issue = next(
+            (
+                issue
+                for issue in issues
+                if issue.state == "open" and not issue.is_pull_request and issue.title == title
+            ),
+            None,
+        )
+    if existing_issue is not None:
+        existing_number = existing_issue.number
+        deps.db.set_meta("conflict_issue_number", str(existing_number))
+        detail = f"existing issue #{existing_number}"
+        _record(
+            deps,
+            started_at,
+            "conflict",
+            before_sha=before_sha,
+            detail=detail,
+            issue_number=existing_number,
+        )
+        return {"outcome": "conflict", "issue_number": existing_number}
 
     body = (
         f"An upstream merge conflict occurred while syncing `{UPSTREAM_REPO}` into "
@@ -86,7 +99,7 @@ async def _record_conflict(
         "4. Open a pull request for review; do not push the resolution directly to the target branch."
     )
     issue = await deps.github.create_issue(
-        title=f"Upstream sync conflict on {branch}",
+        title=title,
         body=body,
         labels=[LABEL_NEEDS_HUMAN],
     )
@@ -139,7 +152,7 @@ async def run_upstream_sync(deps: Deps) -> dict:
                 before_sha=before_sha,
                 detail="merge-upstream returned error",
             )
-            return {"outcome": "error"}
+            return {"outcome": "error", "error": "merge_upstream_failed"}
 
         pending_outcome = deps.db.get_meta(_PENDING_OUTCOME)
         if merge.outcome in {"merged", "fast-forward"} or pending_outcome is None:
@@ -218,10 +231,13 @@ async def run_upstream_sync(deps: Deps) -> dict:
 
 
 def register(app: FastAPI, deps: Deps) -> None:
+    run_lock = asyncio.Lock()
+
     async def upstream_sync_loop() -> None:
         while True:
             try:
-                await run_upstream_sync(deps)
+                async with run_lock:
+                    await run_upstream_sync(deps)
             except Exception:
                 logger.exception("Unexpected upstream sync failure")
             await asyncio.sleep(deps.settings.upstream_sync_interval_s)
@@ -235,5 +251,11 @@ def register(app: FastAPI, deps: Deps) -> None:
             return JSONResponse({"error": "upstream sync disabled"}, status_code=404)
         if not is_allowed_local_request(request, deps.settings.sweep_allowed_cidrs):
             return JSONResponse({"error": "forbidden"}, status_code=403)
-        result = await run_upstream_sync(deps)
+        if run_lock.locked():
+            return JSONResponse({"outcome": "busy"}, status_code=409)
+        await run_lock.acquire()
+        try:
+            result = await run_upstream_sync(deps)
+        finally:
+            run_lock.release()
         return JSONResponse(result, status_code=502 if result.get("error") else 200)
