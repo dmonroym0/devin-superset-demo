@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from collections.abc import Sequence
 from urllib.parse import quote, urljoin, urlsplit
@@ -10,7 +11,14 @@ import httpx
 
 from app.config import Settings
 from app.interfaces import GitHubClient
-from app.models import Issue, LabelSpec, Mode
+from app.models import (
+    CompareResult,
+    Issue,
+    LabelSpec,
+    MergeUpstreamResult,
+    Mode,
+    UpstreamCommit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +37,7 @@ def build_github_client(settings: Settings) -> GitHubClient:
         # local import: app.fake_github imports GitHubError from this module
         from app.fake_github import FakeGitHub
 
-        return FakeGitHub.from_seed()
+        return FakeGitHub.from_seed(upstream_scenario=settings.demo_upstream_scenario)
     return HttpGitHubClient(settings)
 
 
@@ -211,5 +219,131 @@ class HttpGitHubClient:
         )
         return self._to_issue(response.json())
 
+    async def get_branch_sha(self, branch: str) -> str:
+        response = await self._request(
+            "GET", f"{self._repo_path}/branches/{quote(branch, safe='')}"
+        )
+        return response.json()["commit"]["sha"]
+
+    async def merge_upstream(self, branch: str) -> MergeUpstreamResult:
+        response = await self._request(
+            "POST",
+            f"{self._repo_path}/merge-upstream",
+            json={"branch": branch},
+            ok_statuses=(409, 422),
+        )
+        message = _response_message(response)
+        if response.status_code == 409:
+            return MergeUpstreamResult("conflict", message)
+        if response.status_code == 422:
+            return MergeUpstreamResult("error", message)
+        merge_type = response.json().get("merge_type")
+        outcome = "merged" if merge_type == "merge" else merge_type
+        if outcome not in {"merged", "fast-forward", "none"}:
+            return MergeUpstreamResult("error", message or "unknown merge type")
+        return MergeUpstreamResult(outcome, message)
+
+    async def compare(self, base: str, head: str) -> CompareResult:
+        path = f"{self._repo_path}/compare/{quote(base, safe='')}...{quote(head, safe='')}"
+        response = await self._request("GET", path)
+        data = response.json()
+        commits = tuple(
+            UpstreamCommit(
+                sha=item.get("sha", ""),
+                subject=(item.get("commit", {}).get("message") or "").splitlines()[0],
+                is_merge=len(item.get("parents", ())) > 1,
+            )
+            for item in data.get("commits", [])
+        )
+        files = tuple(item["filename"] for item in data.get("files", []) if item.get("filename"))
+        return CompareResult(commits, files)
+
+    async def _get_file_details(self, path: str, ref: str) -> tuple[str | None, str | None]:
+        response = await self._request(
+            "GET",
+            f"{self._repo_path}/contents/{quote(path, safe='/')}",
+            params={"ref": ref},
+            ok_statuses=(404,),
+        )
+        if response.status_code == 404:
+            return None, None
+        data = response.json()
+        content = base64.b64decode(data.get("content", "")).decode("utf-8")
+        return content, data.get("sha")
+
+    async def get_file(self, path: str, ref: str) -> str | None:
+        content, _ = await self._get_file_details(path, ref)
+        return content
+
+    async def create_changelog_pr(
+        self,
+        base_branch: str,
+        head_sha: str,
+        branch_name: str,
+        content: str,
+        title: str,
+        body: str,
+    ) -> str:
+        ref = await self._request(
+            "POST",
+            f"{self._repo_path}/git/refs",
+            json={"ref": f"refs/heads/{branch_name}", "sha": head_sha},
+            ok_statuses=(422,),
+        )
+        if ref.status_code == 422 and "reference already exists" not in _response_message(ref).lower():
+            raise GitHubError(422, "POST", f"{self._repo_path}/git/refs")
+
+        _, file_sha = await self._get_file_details("FORK_CHANGELOG.md", branch_name)
+        payload = {
+            "message": title,
+            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+            "branch": branch_name,
+        }
+        if file_sha is not None:
+            payload["sha"] = file_sha
+        await self._request(
+            "PUT",
+            f"{self._repo_path}/contents/FORK_CHANGELOG.md",
+            json=payload,
+        )
+
+        pull = await self._request(
+            "POST",
+            f"{self._repo_path}/pulls",
+            json={"title": title, "head": branch_name, "base": base_branch, "body": body},
+            ok_statuses=(422,),
+        )
+        if pull.status_code == 422:
+            if "a pull request already exists" not in _response_message(pull).lower():
+                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+            existing = await self._request(
+                "GET",
+                f"{self._repo_path}/pulls",
+                params={"head": f"{self._settings.github_repo.split('/')[0]}:{branch_name}", "state": "open"},
+            )
+            matches = existing.json()
+            if not matches:
+                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+            return matches[0]["html_url"]
+        return pull.json()["html_url"]
+
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+def _response_message(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+    except (ValueError, AttributeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    messages = [data.get("message")] if isinstance(data.get("message"), str) else []
+    errors = data.get("errors", [])
+    if isinstance(errors, list):
+        for error in errors:
+            if isinstance(error, dict):
+                messages.extend(value for value in error.values() if isinstance(value, str))
+            elif isinstance(error, str):
+                messages.append(error)
+    return " ".join(messages)

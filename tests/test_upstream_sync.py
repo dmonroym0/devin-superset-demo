@@ -1,0 +1,214 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from app.budget import Budget
+from app.config import Settings
+from app.db import Database
+from app.fake_devin import FakeDevin
+from app.fake_github import FakeGitHub
+from app.github_client import GitHubError
+from app.interfaces import Deps
+from app.main import create_app
+from app.upstream_sync import run_upstream_sync
+
+
+def _deps(tmp_path, *, scenario="merge"):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / f"{scenario}.db"),
+            "UPSTREAM_SYNC_ENABLED": "true",
+            "DEMO_UPSTREAM_SCENARIO": scenario,
+        }
+    )
+    db = Database(settings.db_path)
+    db.init_schema()
+    github = FakeGitHub.from_seed(upstream_scenario=scenario)
+    deps = Deps(
+        settings=settings,
+        db=db,
+        budget=Budget(db, settings.acu_ceiling),
+        github=github,
+        devin=FakeDevin.from_scenarios(),
+        clock=lambda: 1_800_000_000,
+    )
+    return deps, github
+
+
+@pytest.mark.asyncio
+async def test_upstream_merge_creates_changelog_pr_and_advances_sha(tmp_path):
+    deps, github = _deps(tmp_path)
+    try:
+        result = await run_upstream_sync(deps)
+
+        assert result["outcome"] == "merged"
+        assert result["pr_url"] == "https://github.com/dmonroym0/superset/pull/900"
+        assert len(github.created_prs) == 1
+        assert github.created_prs[0]["base_branch"] == "master"
+        assert "# Fork changelog" in github.created_prs[0]["content"]
+        assert "never pushed directly to `master`" in github.created_prs[0]["body"]
+        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert deps.db.latest_upstream_sync()["pr_url"] == result["pr_url"]
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_second_upstream_sync_is_none_without_creating_another_pr(tmp_path):
+    deps, github = _deps(tmp_path)
+    try:
+        await run_upstream_sync(deps)
+        result = await run_upstream_sync(deps)
+
+        assert result["outcome"] == "none"
+        assert len(github.created_prs) == 1
+        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_conflict_creates_one_issue_while_existing_issue_is_open(tmp_path):
+    deps, github = _deps(tmp_path, scenario="conflict")
+    try:
+        first = await run_upstream_sync(deps)
+        second = await run_upstream_sync(deps)
+
+        assert first["outcome"] == second["outcome"] == "conflict"
+        assert first["issue_number"] == second["issue_number"]
+        assert len(github.created_issues) == 1
+        body = github.created_issues[0].body
+        assert "apache/superset" in body
+        assert "dmonroym0/superset" in body
+        assert "git fetch upstream" in body
+        assert "never auto-resolves" in body
+        assert deps.db.get_meta("conflict_issue_number") == str(first["issue_number"])
+        assert deps.db.latest_upstream_sync()["detail"] == f"existing issue #{first['issue_number']}"
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_closed_conflict_issue_is_replaced(tmp_path):
+    deps, github = _deps(tmp_path, scenario="conflict")
+    try:
+        first = await run_upstream_sync(deps)
+        await github.close_issue(first["issue_number"])
+        second = await run_upstream_sync(deps)
+
+        assert second["outcome"] == "conflict"
+        assert second["issue_number"] != first["issue_number"]
+        assert len(github.created_issues) == 2
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_changelog_pr_failure_does_not_advance_sha_and_retries(tmp_path):
+    deps, github = _deps(tmp_path)
+    original_create = github.create_changelog_pr
+    calls = 0
+
+    async def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise GitHubError(503, "POST", "/repos/dmonroym0/superset/pulls")
+        return await original_create(*args, **kwargs)
+
+    github.create_changelog_pr = fail_once
+    try:
+        first = await run_upstream_sync(deps)
+        assert first["outcome"] == "error"
+        assert deps.db.get_meta("changelog_through_sha") is None
+        assert deps.db.latest_upstream_sync()["detail"] == "GitHub status 503"
+
+        second = await run_upstream_sync(deps)
+        assert second["outcome"] == "merged"
+        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert len(github.created_prs) == 1
+    finally:
+        deps.db.close()
+
+
+def test_disabled_sync_has_no_loop_and_endpoint_is_not_found(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "disabled.db"),
+            "UPSTREAM_SYNC_ENABLED": "false",
+            "SWEEP_INTERVAL_S": "86400",
+        }
+    )
+    github = FakeGitHub.from_seed()
+    app = create_app(settings, github=github, devin=FakeDevin.from_scenarios())
+
+    assert not any(task.__name__ == "upstream_sync_loop" for task in app.state.deps.background)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/sync-upstream")
+        metrics = client.get("/metrics.json").json()["upstream_sync"]
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "upstream sync disabled"}
+    assert github._upstream_merged is False
+    assert metrics == {
+        "enabled": False,
+        "last_outcome": None,
+        "last_at": None,
+        "changelog_pr_url": None,
+        "conflict_issue_number": None,
+        "changelog_through_sha": None,
+    }
+
+
+def test_sync_endpoint_rejects_forwarded_for(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "forwarded.db"),
+            "UPSTREAM_SYNC_ENABLED": "true",
+            "SWEEP_INTERVAL_S": "86400",
+        }
+    )
+    app = create_app(
+        settings,
+        github=FakeGitHub.from_seed(),
+        devin=FakeDevin.from_scenarios(),
+    )
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/sync-upstream", headers={"X-Forwarded-For": "127.0.0.1"})
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_sync_metrics_include_last_run_state(tmp_path):
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "DB_PATH": str(tmp_path / "metrics.db"),
+            "UPSTREAM_SYNC_ENABLED": "false",
+        }
+    )
+    app = create_app(
+        settings,
+        github=FakeGitHub.from_seed(),
+        devin=FakeDevin.from_scenarios(),
+    )
+
+    with TestClient(app) as client:
+        deps = app.state.deps
+        deps.db.set_meta("changelog_through_sha", "a" * 40)
+        deps.db.set_meta("conflict_issue_number", "901")
+        deps.db.record_upstream_sync(1_800_000_000, "conflict", issue_number=901)
+        upstream = client.get("/metrics.json").json()["upstream_sync"]
+
+    assert upstream == {
+        "enabled": False,
+        "last_outcome": "conflict",
+        "last_at": "2027-01-15T08:00:00+00:00",
+        "changelog_pr_url": None,
+        "conflict_issue_number": 901,
+        "changelog_through_sha": "a" * 40,
+    }

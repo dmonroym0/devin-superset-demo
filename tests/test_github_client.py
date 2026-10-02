@@ -1,10 +1,13 @@
+import base64
+import json
+
 import httpx
 import pytest
 import respx
 
 from app.config import Settings
 from app.github_client import GitHubError, HttpGitHubClient
-from app.models import Issue, LabelSpec
+from app.models import Issue, LabelSpec, MergeUpstreamResult, UpstreamCommit
 
 BASE = "https://api.github.test"
 REPO_PATH = "/repos/dmonroym0/superset"
@@ -168,5 +171,208 @@ async def test_foreign_next_link_is_not_followed_and_error_hides_token():
         assert FAKE_TOKEN not in str(error.value)
         assert error.value.path == f"{REPO_PATH}/issues/10"
         assert failure.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_branch_sha_reads_commit_sha():
+    respx.get(f"{BASE}{REPO_PATH}/branches/master").mock(
+        return_value=httpx.Response(200, json={"commit": {"sha": "a" * 40}})
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        assert await client.get_branch_sha("master") == "a" * 40
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "payload", "outcome"),
+    [
+        (200, {"merge_type": "merge", "message": "merged"}, "merged"),
+        (200, {"merge_type": "fast-forward", "message": "fast-forward"}, "fast-forward"),
+        (200, {"merge_type": "none", "message": "already up to date"}, "none"),
+        (409, {"message": "conflict"}, "conflict"),
+        (422, {"message": "unprocessable"}, "error"),
+    ],
+)
+@respx.mock
+async def test_merge_upstream_maps_github_outcomes(status, payload, outcome):
+    route = respx.post(f"{BASE}{REPO_PATH}/merge-upstream").mock(
+        return_value=httpx.Response(status, json=payload)
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        result = await client.merge_upstream("master")
+        assert isinstance(result, MergeUpstreamResult)
+        assert result.outcome == outcome
+        assert route.calls[0].request.content == b'{"branch":"master"}'
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_merge_upstream_does_not_retry_transient_post():
+    route = respx.post(f"{BASE}{REPO_PATH}/merge-upstream").mock(return_value=httpx.Response(503))
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.merge_upstream("master")
+        assert error.value.status_code == 503
+        assert route.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_compare_returns_commit_subjects_merge_flags_and_files():
+    base_sha = "a" * 40
+    head_sha = "b" * 40
+    respx.get(f"{BASE}{REPO_PATH}/compare/{base_sha}...{head_sha}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "commits": [
+                    {
+                        "sha": "c" * 40,
+                        "commit": {"message": "feat: add thing\n\nbody"},
+                        "parents": [{"sha": "p1"}],
+                    },
+                    {
+                        "sha": "d" * 40,
+                        "commit": {"message": "Merge pull request"},
+                        "parents": [{"sha": "p1"}, {"sha": "p2"}],
+                    },
+                ],
+                "files": [{"filename": "requirements/base.txt"}, {"filename": "app/main.py"}],
+            },
+        )
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        result = await client.compare(base_sha, head_sha)
+        assert result.commits == (
+            UpstreamCommit("c" * 40, "feat: add thing", False),
+            UpstreamCommit("d" * 40, "Merge pull request", True),
+        )
+        assert result.files == ("requirements/base.txt", "app/main.py")
+    finally:
+        await client.aclose()
+
+
+def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status=404):
+    ref = respx.post(f"{BASE}{REPO_PATH}/git/refs").mock(
+        return_value=httpx.Response(ref_status, json={"message": "Reference already exists"})
+    )
+    content_get = respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        return_value=httpx.Response(content_status, json={"sha": "old-file-sha"})
+    )
+    content_put = respx.put(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        return_value=httpx.Response(201, json={"content": {"sha": "new-file-sha"}})
+    )
+    pulls_post = respx.post(f"{BASE}{REPO_PATH}/pulls").mock(
+        return_value=httpx.Response(
+            pull_status,
+            json=(
+                {"html_url": "https://github.com/dmonroym0/superset/pull/901"}
+                if pull_status == 201
+                else {
+                    "message": "Validation Failed",
+                    "errors": [{"message": "A pull request already exists"}],
+                }
+            ),
+        )
+    )
+    pulls_get = respx.get(f"{BASE}{REPO_PATH}/pulls").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"html_url": "https://github.com/dmonroym0/superset/pull/900"}],
+        )
+    )
+    return ref, content_get, content_put, pulls_post, pulls_get
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_writes_only_new_branch_and_returns_url():
+    branch = "devin/fork-changelog-abcdef123456"
+    ref, content_get, content_put, pulls_post, _ = _mock_changelog_pr_routes()
+    client = HttpGitHubClient(_settings())
+    content = "# Fork changelog\n\n## Upstream sync"
+    try:
+        url = await client.create_changelog_pr(
+            "master",
+            "a" * 40,
+            branch,
+            content,
+            "docs(fork-changelog): update",
+            "Summary",
+        )
+
+        assert url == "https://github.com/dmonroym0/superset/pull/901"
+        assert ref.call_count == 1
+        ref_body = json.loads(ref.calls[0].request.content)
+        assert ref_body["ref"] == "refs/heads/devin/fork-changelog-abcdef123456"
+        assert ref_body["sha"] == "a" * 40
+        assert content_get.calls[0].request.url.params["ref"] == branch
+        put_payload = content_put.calls[0].request.content
+        body = json.loads(put_payload)
+        assert body["branch"] == branch
+        assert base64.b64decode(body["content"]).decode() == content
+        assert "sha" not in body
+        assert pulls_post.calls[0].request.url.path == f"{REPO_PATH}/pulls"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_continues_when_branch_ref_exists():
+    branch = "devin/fork-changelog-abcdef123456"
+    ref, _, content_put, pulls_post, _ = _mock_changelog_pr_routes(ref_status=422)
+    client = HttpGitHubClient(_settings())
+    try:
+        await client.create_changelog_pr(
+            "master",
+            "a" * 40,
+            branch,
+            "# Fork changelog\n",
+            "title",
+            "body",
+        )
+        assert ref.call_count == 1
+        assert content_put.call_count == 1
+        assert pulls_post.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_returns_existing_pr_after_duplicate_422():
+    branch = "devin/fork-changelog-abcdef123456"
+    _, _, _, pulls_post, pulls_get = _mock_changelog_pr_routes(pull_status=422)
+    client = HttpGitHubClient(_settings())
+    try:
+        url = await client.create_changelog_pr(
+            "master",
+            "a" * 40,
+            branch,
+            "# Fork changelog\n",
+            "title",
+            "body",
+        )
+        assert url == "https://github.com/dmonroym0/superset/pull/900"
+        assert pulls_post.call_count == 1
+        assert pulls_get.call_count == 1
+        assert pulls_get.calls[0].request.url.params["head"] == (
+            "dmonroym0:devin/fork-changelog-abcdef123456"
+        )
+        assert pulls_get.calls[0].request.url.params["state"] == "open"
     finally:
         await client.aclose()

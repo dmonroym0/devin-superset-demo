@@ -127,6 +127,7 @@ def test_demo_end_to_end(tmp_path):
                 4: IssueState.NEEDS_HUMAN.value,
                 5: IssueState.NEEDS_HUMAN.value,
             },
+            ready=lambda snapshot: snapshot["upstream_sync"]["changelog_pr_url"] is not None,
         )
 
         assert client.get("/").status_code == 200
@@ -136,6 +137,9 @@ def test_demo_end_to_end(tmp_path):
         assert metrics["issues"]["needs_human"] == 2
         assert metrics["issues"]["not_reachable"] == 1
         assert metrics["automation_rate"] == 0.6
+        assert metrics["upstream_sync"]["changelog_pr_url"] == (
+            "https://github.com/dmonroym0/superset/pull/900"
+        )
         assert metrics["acu"]["committed"] == 5 * 5 + 15 * 2
         assert metrics["acu"]["committed"] <= 120
         assert all(session["devin_mode"] is None for session in metrics["sessions"])

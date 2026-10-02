@@ -165,6 +165,16 @@ class Database:
             detail TEXT NOT NULL,
             created_at REAL NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS upstream_syncs (
+            id INTEGER PRIMARY KEY,
+            started_at REAL NOT NULL,
+            outcome TEXT NOT NULL,
+            before_sha TEXT,
+            after_sha TEXT,
+            detail TEXT,
+            pr_url TEXT,
+            issue_number INTEGER
+        );
         """
         with self._lock:
             self._connection.executescript(schema)
@@ -186,6 +196,45 @@ class Database:
                     f"database {self.path} belongs to {stored} mode, refusing to start in {mode}; "
                     "use a different DB_PATH/DATA_DIR"
                 )
+
+    def get_meta(self, key: str) -> str | None:
+        with self._lock:
+            row = self._connection.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._lock:
+            self._connection.execute(
+                "INSERT INTO meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+            self._connection.commit()
+
+    def record_upstream_sync(
+        self,
+        started_at: float,
+        outcome: str,
+        before_sha: str | None = None,
+        after_sha: str | None = None,
+        detail: str | None = None,
+        pr_url: str | None = None,
+        issue_number: int | None = None,
+    ) -> None:
+        with self._lock:
+            self._connection.execute(
+                "INSERT INTO upstream_syncs(started_at, outcome, before_sha, after_sha, detail, pr_url, issue_number) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (started_at, outcome, before_sha, after_sha, detail, pr_url, issue_number),
+            )
+            self._connection.commit()
+
+    def latest_upstream_sync(self) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM upstream_syncs ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return dict(row) if row else None
 
     def record_delivery(
         self, delivery_id: str, event: str, action: str, issue_number: int | None, now: float

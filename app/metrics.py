@@ -75,6 +75,8 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
     ]
     median_time = statistics.median(elapsed) if elapsed else None
     sessions = db.list_sessions()
+    sync = db.latest_upstream_sync()
+    conflict_issue_number = db.get_meta("conflict_issue_number")
     return {
         "generated_at": _iso_timestamp(now),
         "mode": settings.mode.value,
@@ -86,6 +88,14 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "ceiling": budget.ceiling,
             "remaining": budget.remaining(),
             "consumed_metered": sum(session.acus_consumed for session in sessions),
+        },
+        "upstream_sync": {
+            "enabled": settings.upstream_sync_enabled,
+            "last_outcome": sync["outcome"] if sync else None,
+            "last_at": _iso_timestamp(sync["started_at"]) if sync else None,
+            "changelog_pr_url": sync["pr_url"] if sync else None,
+            "conflict_issue_number": int(conflict_issue_number) if conflict_issue_number else None,
+            "changelog_through_sha": db.get_meta("changelog_through_sha"),
         },
         "sessions": [_session_detail(session) for session in sessions],
         "issues_detail": [_issue_detail(issue) for issue in issues],

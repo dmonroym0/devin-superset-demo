@@ -85,6 +85,7 @@ def test_dashboard_renders_database_rows_safely(test_settings, fake_github, fake
     assert "Not reachable" in response.text
     assert "Automation rate" in response.text
     assert "Median time to PR" in response.text
+    assert "Upstream sync" in response.text
     assert "42s" in response.text
     assert "runtime ceiling across all issues" in response.text
     assert "https://github.com/dmonroym0/superset/issues/101" in response.text

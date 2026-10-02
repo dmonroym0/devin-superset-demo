@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app import dashboard, devin_client, github_client, pipeline, sweep, webhook
+from app import dashboard, devin_client, github_client, pipeline, sweep, upstream_sync, webhook
 from app.budget import Budget
 from app.config import Settings
 from app.db import Database
@@ -62,7 +62,7 @@ def create_app(
     app = FastAPI(lifespan=lifespan)
     app.state.deps = deps
 
-    for module in (webhook, sweep, pipeline, dashboard):
+    for module in (webhook, sweep, pipeline, dashboard, upstream_sync):
         module.register(app, deps)
 
     @app.get("/healthz")
