@@ -31,16 +31,16 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
-| Devin v3 client + scripted fake | planned | app/devin_client.py, app/fake_devin.py | `pytest tests/test_devin_client.py` | R5, R13 |
-| Playbook resolution by title + overrides + schema from GET playbook | planned | app/playbooks.py | `pytest tests/test_playbooks.py` | R5, E |
-| Triage with read-only PR rejection | planned | app/triage.py | `pytest tests/test_triage.py` | R2 |
-| Prompt fencing + reachability-evidence-standards skill | planned | app/prompts.py | `pytest tests/test_prompts.py` | R11, F |
-| Router (per issue) | planned | app/router.py | `pytest tests/test_router.py` | R3, C |
-| Fix session, "PR opened", never archived | planned | app/fix.py | `pytest tests/test_fix.py` | R4, D |
-| Pipeline worker | planned | app/pipeline.py | `pytest tests/test_pipeline.py` | R2–R4 |
-| Stuck-session escalation (SHOULD) | planned | app/escalation.py | `pytest tests/test_escalation.py` | SHOULD |
-| Optional devin_mode per stage (SHOULD) | planned | app/config.py, app/triage.py, app/fix.py | `pytest tests/test_devin_mode.py` | K |
-| Playbook bootstrap script (SHOULD) | planned | scripts/bootstrap_playbooks.py | `pytest tests/test_bootstrap.py` | R8 |
+| Devin v3 client + scripted fake | built | app/devin_client.py, app/fake_devin.py | `pytest tests/test_devin_client.py` | R5, R13 |
+| Playbook resolution by title + overrides + schema from GET playbook | built | app/playbooks.py | `pytest tests/test_playbooks.py` | R5, E |
+| Triage with read-only PR rejection | built | app/triage.py | `pytest tests/test_triage.py` | R2 |
+| Prompt fencing + reachability-evidence-standards skill | built | app/prompts.py | `pytest tests/test_prompts.py` | R11, F |
+| Router (per issue) | built | app/router.py | `pytest tests/test_router.py` | R3, C |
+| Fix session, "PR opened", never archived | built | app/fix.py | `pytest tests/test_fix.py` | R4, D |
+| Pipeline worker | built | app/pipeline.py | `pytest tests/test_pipeline.py` | R2–R4 |
+| Stuck-session escalation (SHOULD) | built | app/escalation.py | `pytest tests/test_escalation.py` | SHOULD |
+| Optional devin_mode per stage (SHOULD) | built | app/config.py, app/triage.py, app/fix.py | `pytest tests/test_devin_mode.py` | K |
+| Playbook bootstrap script (SHOULD) | built | scripts/bootstrap_playbooks.py | `pytest tests/test_bootstrap.py` | R8 |
 
 ## Ops side (child C)
 
