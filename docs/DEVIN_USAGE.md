@@ -86,6 +86,11 @@ One section per capability. Each says what it did here, where to see it, and why
 - **What:** DeepWiki indexes `dmonroym0/devin-superset-demo` and `dmonroym0/superset` (Devin's `list_wiki_repos`, 2026-10-02). `.devin/wiki.json` (added in PR #20) steers this repo's wiki: two repo notes, an English page tree, and an experimental **"Documentación en español"** section (Ciclo de vida de un issue, Presupuesto de ACU, Dashboard y telemetría, Configuración y ejecución) whose page notes require es-419, *tú*, and `docs/es/GLOSSARY.md` terms (`tope` = ceiling, `límite` = cap).
 - **Why `wiki.json` doesn't change after a regeneration:** it is an *input*. DeepWiki reads it to decide which pages to write; the generated pages live in Devin, not in git. Regenerating never writes back to the file.
 - **Evidence:** a Spanish DeepWiki question about the generated "Presupuesto de ACU" page answered in Spanish and quoted "Se alcanzó el tope: las sesiones nuevas esperan hasta que lo subas o se liberen reservas", using `tope` as the glossary requires (https://app.devin.ai/search/api_5294e9e0-f95e-43e1-bcc2-9d0c80f494f0). The wiki is at https://app.devin.ai/wiki/dmonroym0/devin-superset-demo (org login required).
+- **Screenshots (2026-10-02, `main`, "Maintainer Edited"):** the English Overview with the Spanish section in the page tree, the Spanish section intro, and the generated "Presupuesto de ACU" page (`Límite por sesión` / `Tope global`, matching the glossary).
+
+  ![DeepWiki English overview](img/deepwiki-overview-en.png)
+  ![DeepWiki Documentación en español](img/deepwiki-es-section.png)
+  ![DeepWiki Presupuesto de ACU](img/deepwiki-es-presupuesto-acu.png)
 - **Open:** native-speaker review of the Spanish pages (https://github.com/dmonroym0/devin-superset-demo/issues/23).
 
 ## 13. Other AI tools
