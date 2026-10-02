@@ -74,3 +74,5 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
 | features.md commands collect from a plain `pytest` run; no `planned` row for shipped files | verified | pyproject.toml, tests/test_features_md.py | `pytest tests/test_features_md.py`; `pytest tests/test_e2e_demo.py` | R10, F |
+| Demo reset between takes (dry run by default; only named issues; undoes service labels, comments, not-planned close; optional fresh copy) | built | scripts/demo_reset.py, tests/test_demo_reset.py, docs/LIVE_RUNBOOK.md | `pytest tests/test_demo_reset.py`; `python scripts/demo_reset.py 2` (dry run) | submission audit |
+| Submission docs: state, timeline, Devin usage, test report, LIVE runbook | built | docs/STATE.md, docs/TIMELINE.md, docs/DEVIN_USAGE.md, docs/TEST_REPORT.md, docs/LIVE_RUNBOOK.md | read them | submission audit |
