@@ -144,6 +144,35 @@ def test_not_reachable_route_skips_fix_and_pr_and_keeps_cves():
     db.close()
 
 
+def test_object_shaped_gating_values_are_formatted():
+    db, budget, settings = _make_db()
+    _add_issue(db, 8)
+    assert db.transition(8, [IssueState.SEEN], IssueState.TRIAGING, 20)
+    output = _triage_output()
+    output["cves"][0]["gating"] = {
+        "feature_flags": [
+            {"name": "ALERT_REPORTS", "default": False},
+            {"name": "ALERT_REPORT_WEBHOOK", "default": False},
+        ],
+        "config_options": [
+            {"name": "X_ONLY", "default": "True"},
+            {"default": "malformed"},
+        ],
+        "required_permissions": [
+            {"permission": "can_write", "view": "Database", "min_role": "Admin"},
+        ],
+    }
+    _add_session(db, "triage-8", 8, Stage.TRIAGE, 20, 30, output)
+
+    issue = compute(db, budget, settings, now=40)["issues_detail"][0]
+    assert issue["cves"][0]["gating"] == {
+        "feature_flags": ["ALERT_REPORTS=False", "ALERT_REPORT_WEBHOOK=False"],
+        "config_options": ["X_ONLY=True"],
+        "required_permissions": ["can_write on Database (Admin)"],
+    }
+    db.close()
+
+
 def test_needs_human_at_route_stops_route_and_skips_fix_and_pr():
     db, budget, settings = _make_db()
     _add_issue(db, 3)

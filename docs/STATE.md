@@ -1,12 +1,12 @@
 # STATE: what exists on 2026-10-02 (submission audit)
 
-Snapshot taken from `main @ f662d83` (dmonroym0/devin-superset-demo) and the fork dmonroym0/superset, read-only. Every row cites its evidence. GitHub states come from `gh issue view`, `gh pr list --json`, `gh api .../timeline` and the PR check summaries, captured on 2026-10-02 around 08:00–08:20 UTC. The fork sections (issues, PRs, upstream sync) were refreshed at ~17:30 UTC after the LIVE run.
+Snapshot taken from `main @ f662d83` (dmonroym0/devin-superset-demo) and the fork dmonroym0/superset, read-only. Every row cites its evidence. GitHub states come from `gh issue view`, `gh pr list --json`, `gh api .../timeline` and the PR check summaries, captured on 2026-10-02 around 08:00–08:20 UTC. The fork sections (issues, PRs, upstream sync) were refreshed at ~17:30 UTC after the LIVE run, and again at ~21:50 UTC after the second upstream sync (fork `master` is now bc3698b5d6; PR #11).
 
 ## 1. The fork: dmonroym0/superset
 
 ### Issues
 
-Refreshed 2026-10-02 ~17:30 UTC from `gh api repos/dmonroym0/superset/issues/N` (+ `/events`, `/comments`). This supersedes the 08:20 snapshot, which predates the LIVE run.
+Refreshed 2026-10-02 ~21:50 UTC from `gh api repos/dmonroym0/superset/issues/N` (+ `/events`, `/comments`). This supersedes the 08:20 snapshot, which predates the LIVE run.
 
 | # | Title | Package (ecosystem) | State | Labels | Open PR? |
 |---|---|---|---|---|---|
@@ -16,31 +16,36 @@ Refreshed 2026-10-02 ~17:30 UTC from `gh api repos/dmonroym0/superset/issues/N` 
 | 4 | [Security] Upgrade pytest 7.4.4 -> 9.0.3 | pytest (pip, dev) | open | security | **yes: #7 and #8** (open drafts, stacked) |
 | 5 | [Security] Upgrade fast-uri 3.1.7 -> 3.1.8 | fast-uri (npm, dev) | open | security | no |
 
+Who opened them: all five were opened on 2026-10-01 between 06:33:19 and 06:35:51 by `devin-ai-integration[bot]` (Devin's GitHub app), from Devin session https://app.devin.ai/sessions/3f181bfa2dfa4592b98eb60c30ee56b9 ("Create Security Upgrade Issues"). None was opened by a person or by this service.
+
 LIVE evidence. The service acts as the PAT owner, so its GitHub actor is `dmonroym0`; Devin's own triage comments are by `devin-ai-integration[bot]`.
 
 - **#2:** `devin:fixplease` added 08:22:43 → `devin:in-progress` 08:22:48 → Devin triage comment 08:25:58 → service comment "### devin-superset-demo triage / Route: Not reachable: closing as low priority" 08:27:07 → `devin:low-priority` 08:27:08 → closed `not_planned` 08:27:11. This is the service's not-reachable path (`app/issue_actions.py`), seconds apart and in that order.
-- **#3:** `devin:fixplease` 08:28:51 → `devin:in-progress` 08:29:17 → Devin triage comment 08:33:22 → service route comment "Fix: opening a Devin fix session" 08:34:26 → PR #9 opened 08:39:44 by `devin-ai-integration[bot]` (session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8) → service comment "<https://github.com/dmonroym0/superset/pull/9> Opened, not done" 08:40:01 → `devin:pr-opened` 08:40:02, `devin:in-progress` removed 08:40:03.
+- **#3:** `devin:fixplease` 08:28:51 → `devin:in-progress` 08:29:17 → Devin triage comment 08:33:22 (triage session https://app.devin.ai/sessions/482f049dcce9483486d53c6d77a46eb3, HEAD d2fb52ac83) → service route comment "Fix: opening a Devin fix session" 08:34:26 → PR #9 opened 08:39:44 by `devin-ai-integration[bot]` (session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8) → service comment "<https://github.com/dmonroym0/superset/pull/9> Opened, not done" 08:40:01 → `devin:pr-opened` 08:40:02, `devin:in-progress` removed 08:40:03.
 - **#1, #4, #5:** never labelled `devin:fixplease`. #1 and #4 were skipped on purpose: they already have PRs and there is no duplicate-PR guard (https://github.com/dmonroym0/devin-superset-demo/issues/10).
 
 ### Pull requests
 
-Checks are per head commit and were not re-run after the upstream sync. "Mergeable" is GitHub's `mergeable` / `mergeable_state` read after the sync.
+Checks are per head commit and were not re-run after the upstream syncs (except #9, see below). "Mergeable" is GitHub's `mergeable` / `mergeable_state` read at ~21:50 UTC, after the second sync.
 
 | # | Title | State | Head → base | Latest CI (head) | Failing jobs | Mergeable after sync | Linked issue | Devin session (from body) |
 |---|---|---|---|---|---|---|---|---|
-| 6 | chore(deps): bump jaraco-context from 6.0.1 to 6.1.0 (CVE-2026-23949) | **open** (not draft, not merged) | devin/1790836671-bump-jaraco-context → master | 50 passed, 0 failed | none | yes, `clean` (1 ahead / 45 behind) | Closes #1 | https://app.devin.ai/sessions/98aa8416df4946948c56758fe753b547 |
+| 6 | chore(deps): bump jaraco-context from 6.0.1 to 6.1.0 (CVE-2026-23949) | **open** (not draft, not merged) | devin/1790836671-bump-jaraco-context → master | 50 passed, 0 failed | none | yes, `clean` (1 ahead / 57 behind) | Closes #1 | https://app.devin.ai/sessions/98aa8416df4946948c56758fe753b547 |
 | 7 | chore(deps-dev): bump pytest from 7.4.4 to 8.4.2 | **open, draft** | devin/1790839809-pytest-8.4.2 → master | 49 passed, **2 failed** | `test-postgres (current)`, `test-postgres-required` (`TestSavedQueryApi::test_related_saved_query`, documented in the body as a Postgres-only row-order failure left for a maintainer) | yes, `unstable` (no conflict; `unstable` = the 2 failing checks) | Refs #4 | https://app.devin.ai/sessions/629a2b09418543aab6861d405bb20357 |
 | 8 | chore(deps-dev): bump pytest from 8.4.2 to 9.0.3 and pytest-asyncio to 1.3.0 | **open, draft** (stacked on #7) | devin/1790840562-pytest-9.0.3 → devin/1790839809-pytest-8.4.2 | 44 passed, 0 failed | none | yes, `clean` (its base is #7's branch, which the sync didn't touch) | Refs #4 | https://app.devin.ai/sessions/629a2b09418543aab6861d405bb20357 |
-| 9 | fix(deps): bump urllib3 from 2.7.0 to 2.8.0 (CVE-2026-97688) | **open, draft** | devin/1790930323-bump-urllib3 → master | 52 passed, 0 failed | none | yes, `clean` | issue #3 (LIVE fix session) | https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8 |
+| 9 | fix(deps): bump urllib3 from 2.7.0 to 2.8.0 (CVE-2026-97688) | **open, draft** | devin/1790930323-bump-urllib3 → master | 76 passed, 6 still running, 0 failed (re-triggered when #9 was marked ready for review at 21:40 and back to draft at 21:41) | none | yes, `unstable` only because checks are still running (1 ahead / 57 behind) | issue #3 (LIVE fix session) | https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8 |
 | 10 | docs(fork-changelog): upstream sync d2fb52a..0fdfd66 | **open** | devin/fork-changelog-0fdfd6660e0a → master | 35 passed, **1 failed** | `License Check`: `FORK_CHANGELOG.md` has no Apache license header (Superset's `scripts/check_license.sh`; https://github.com/dmonroym0/devin-superset-demo/issues/26) | yes, `unstable` (the failing check) | — (BONUS upstream sync, opened by the service as `dmonroym0`) | — |
+| 11 | docs(fork-changelog): upstream sync 0fdfd66..bc3698b | **open** | devin/fork-changelog-bc3698b5d64b → master | 35 passed, **1 failed** | `License Check`, same cause as #10 (https://github.com/dmonroym0/devin-superset-demo/issues/26) | yes, `unstable` (the failing check) | — (second BONUS upstream sync, opened by the service as `dmonroym0`) | — |
 
 **No fork PR is merged. No CVE is fixed on fork `master`.**
 
 ### Upstream sync and fork `master`
 
-The LIVE upstream sync (15:31:13 UTC) moved fork `master` from d2fb52ac83 to 0fdfd6660e, the upstream commit "docs(databases): add ClickHouse Managed Postgres (#44870)". `compare d2fb52ac83...0fdfd6660e` is 45 ahead / 0 behind, and `compare apache/superset:master...dmonroym0:master` is 0 ahead. So `master` holds **only upstream commits: no merge commit and no fork-only commit**. The board's "merged upstream changes" is the label for a successful `merge-upstream` call (`app/i18n/en.json`), not a merge commit. The changelog went to PR #10 on its own branch, never to `master`.
+Two LIVE upstream syncs ran. The first (15:31:13 UTC) moved fork `master` from d2fb52ac83 to 0fdfd6660e, the upstream commit "docs(databases): add ClickHouse Managed Postgres (#44870)". `compare d2fb52ac83...0fdfd6660e` is 45 ahead / 0 behind, and `compare apache/superset:master...dmonroym0:master` is 0 ahead. So `master` holds **only upstream commits: no merge commit and no fork-only commit**. The board's "merged upstream changes" is the label for a successful `merge-upstream` call (`app/i18n/en.json`), not a merge commit. The changelog went to PR #10 on its own branch, never to `master`.
 
-Effect on open PRs: none conflict. #6 and #9 each touch only `requirements/*.txt` and are `clean`. #7 touches `requirements/development.txt` and two test fixtures, with no conflict; its `unstable` state is the pre-existing Postgres failure. #8 is based on #7's branch, which the sync didn't move. Their checks still reflect the pre-sync base.
+The second (19:02:20 UTC) moved `master` from 0fdfd6660e to **bc3698b5d6** (`compare 0fdfd6660e...bc3698b5d6`: 12 ahead / 0 behind, again upstream-only) and opened PR #11 with `FORK_CHANGELOG.md` for 0fdfd66..bc3698b (feat 1, fix 2, test 8, chore 1; no dependency files changed). PR #10 is now stale: its changelog covers only the first range. `superset/config.py`, `superset/reports/notifications/webhook.py` and `superset/utils/network.py` are identical at 0fdfd66 and bc3698b, so the line numbers in the #3 evidence hold for both.
+
+Effect on open PRs (after both syncs): none conflict. #6 and #9 each touch only `requirements/*.txt` and are `clean`. #7 touches `requirements/development.txt` and two test fixtures, with no conflict; its `unstable` state is the pre-existing Postgres failure. #8 is based on #7's branch, which the sync didn't move. Their checks still reflect the pre-sync base.
 
 ### Claims checked on GitHub
 
@@ -53,7 +58,7 @@ Effect on open PRs: none conflict. #6 and #9 each touch only `requirements/*.txt
 | Suite re-run with -W error because pytest.ini hides warnings | **True, but narrower.** The rerun used `-W error::pytest.PytestRemovedIn9Warning -W error::pytest.PytestDeprecationWarning`, not a blanket `-W error`. The stated reason is "`pytest.ini` has `filterwarnings = ignore`". | PR #7 table, PR #8 table |
 | urllib3 issue triaged reachable; python-multipart not reachable in the default configuration | **True.** Issue #3 comment: CVE-2026-97688 and -97689 "Reachable (reproduced locally)", -97687 not reachable. Issue #2 comment: "none of the three CVEs are reachable through this repo's code paths", with the caveat that a deployment using `OAuthProvider`/`OAuthProxy` would make two of them reachable. | dmonroym0/superset#3 comment 5926719039, #2 comment 5926732081 |
 
-**Difference from your notes:** the issue #3 triage comment says CVE-2026-97688 (deflate hang) was "reproduced locally". Your notes say it did not reproduce. The comment also doesn't mention the ALERT_REPORTS / ALERT_REPORT_WEBHOOK feature flags. It only mentions `ALERT_REPORTS_WEBHOOK_ALLOW_INTERNAL_HOSTS`. Both points match your account that Devin missed the flags. The DEMO scenario for #3 (`app/demo/scenarios.json`) encodes -97688 as `REACHABLE, high`, copied from that comment.
+**Difference from your notes:** the issue #3 triage comment says CVE-2026-97688 (deflate hang) was "reproduced locally". Your notes say it did not reproduce. The comment also doesn't mention the ALERT_REPORTS / ALERT_REPORT_WEBHOOK feature flags. It only mentions `ALERT_REPORTS_WEBHOOK_ALLOW_INTERNAL_HOSTS`. Both points match your account that Devin missed the flags. The DEMO scenario for #3 (`app/demo/scenarios.json`) now encodes the gates that comment missed: -97688 and -97689 stay `REACHABLE, high` (so #3 still routes to Fix), but both are gated on `ALERT_REPORTS` (`superset/config.py:771`) and `ALERT_REPORT_WEBHOOK` (`:786`), both default `False`, with `reachable_by_default: false`. Evidence lines are checked on fork `master` bc3698b: `webhook.py:284` (flag check), `webhook.py:313` (`requester.post`), `network.py:133` (`get_ssrf_safe_requester`).
 
 ## 2. The demo repo: dmonroym0/devin-superset-demo
 
@@ -111,7 +116,7 @@ Effect on open PRs: none conflict. #6 and #9 each touch only `requirements/*.txt
 |---|---|---|---|
 | #1 jaraco-context | CVE-2026-23949 REACHABLE medium | fake PR /pull/101 | PR opened (illustrative; see #12) |
 | #2 python-multipart | 3 × NOT_REACHABLE high | — | comment, low-priority, close |
-| #3 urllib3 | -97687 NOT_REACHABLE; -97688, -97689 REACHABLE high | fake PR /pull/103 | PR opened |
+| #3 urllib3 | -97687 NOT_REACHABLE; -97688, -97689 REACHABLE high, gated on `ALERT_REPORTS` + `ALERT_REPORT_WEBHOOK` (both default False), not reachable by default | fake PR /pull/103 | PR opened |
 | #4 pytest | CVE-2025-71176 REACHABLE medium | — | needs-human (major bump 7.4.4 → 9.0.3) |
 | #5 fast-uri | CVE-2026-86472 UNKNOWN low | — | needs-human (illustrative; see #12) |
 | synthetic 9001 | triage returns a PR (/pull/9001) | — | rejected → needs-human + `devin:triage-rejected` |

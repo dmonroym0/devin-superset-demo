@@ -124,7 +124,7 @@
       "expected": "not_reachable"
     },
     "3": {
-      "source": "mirrors real triage comment on issue #3",
+      "source": "mirrors the real triage comments on issue #3 (issuecomment-5926719039, issuecomment-5948272855); file:line re-checked on fork master bc3698b",
       "triage": {
         "polls": 2,
         "pull_requests": [],
@@ -133,7 +133,7 @@
           "comment_url": "https://demo.invalid/dmonroym0/superset/issues/3#triage",
           "package": "urllib3",
           "installed_version": "2.7.0",
-          "head_sha": "demo0000000000000000000000000000000000000",
+          "head_sha": "bc3698b5d64b973d249d59f584a8dc3c48c83263",
           "cves": [
             {
               "cve_id": "CVE-2026-97687",
@@ -141,8 +141,8 @@
               "evidence": [
                 {
                   "file": "requirements/base.txt",
-                  "line": 1,
-                  "description": "vulnerable option never used by Superset call sites"
+                  "line": 432,
+                  "description": "urllib3==2.7.0 pinned; Superset and requests 2.33.0 never set proxy_ssl_context or use_forwarding_for_https, which the bug needs"
                 }
               ],
               "gating": {
@@ -151,7 +151,8 @@
                 "required_permissions": []
               },
               "confidence": "high",
-              "notes": ""
+              "notes": "",
+              "reachable_by_default": false
             },
             {
               "cve_id": "CVE-2026-97688",
@@ -159,19 +160,37 @@
               "evidence": [
                 {
                   "file": "superset/reports/notifications/webhook.py",
-                  "line": 1,
-                  "description": "outbound webhook request via requests/urllib3",
-                  "entry_point": "Celery report task"
+                  "line": 313,
+                  "description": "requester.post() to the report-owner webhook URL; a non-streaming requests call reads the body via r.content -> raw.stream(decode_content=True) -> urllib3 read_chunked",
+                  "entry_point": "Celery reports.execute -> WebhookNotification.send() (webhook.py:283)"
+                },
+                {
+                  "file": "superset/reports/notifications/webhook.py",
+                  "line": 284,
+                  "description": "send() refuses to run unless ALERT_REPORT_WEBHOOK is enabled"
                 }
               ],
               "gating": {
-                "feature_flags": [],
+                "feature_flags": [
+                  {
+                    "name": "ALERT_REPORTS",
+                    "default": false,
+                    "file": "superset/config.py",
+                    "line": 771
+                  },
+                  {
+                    "name": "ALERT_REPORT_WEBHOOK",
+                    "default": false,
+                    "file": "superset/config.py",
+                    "line": 786
+                  }
+                ],
                 "config_options": [],
                 "required_permissions": []
               },
               "confidence": "high",
-              "notes": "",
-              "reachable_by_default": true
+              "notes": "Reproduced at the urllib3/requests level (chunked + deflate response hangs 2.7.0); not driven end to end through Superset. Needs both flags turned on.",
+              "reachable_by_default": false
             },
             {
               "cve_id": "CVE-2026-97689",
@@ -179,23 +198,48 @@
               "evidence": [
                 {
                   "file": "superset/utils/network.py",
-                  "line": 1,
-                  "description": "outbound HTTP via urllib3",
-                  "entry_point": "database connection test"
+                  "line": 133,
+                  "description": "get_ssrf_safe_requester() returns a requests session on peer-validating urllib3 pools (network.py:83-130); its non-streaming posts reach the unbounded chunk-size readline",
+                  "entry_point": "database OAuth2 token request (db_engine_specs/base.py:1069, 1104)"
+                },
+                {
+                  "file": "superset/reports/notifications/webhook.py",
+                  "line": 313,
+                  "description": "requester.post() to the report-owner webhook URL; a non-streaming requests call reads the body via r.content -> raw.stream(decode_content=True) -> urllib3 read_chunked",
+                  "entry_point": "Celery reports.execute -> WebhookNotification.send() (webhook.py:283)"
                 }
               ],
               "gating": {
-                "feature_flags": [],
+                "feature_flags": [
+                  {
+                    "name": "ALERT_REPORTS",
+                    "default": false,
+                    "file": "superset/config.py",
+                    "line": 771
+                  },
+                  {
+                    "name": "ALERT_REPORT_WEBHOOK",
+                    "default": false,
+                    "file": "superset/config.py",
+                    "line": 786
+                  }
+                ],
                 "config_options": [],
-                "required_permissions": []
+                "required_permissions": [
+                  {
+                    "permission": "can_write",
+                    "view": "Database",
+                    "min_role": "Admin"
+                  }
+                ]
               },
               "confidence": "high",
-              "notes": "",
-              "reachable_by_default": true
+              "notes": "Webhook path needs both flags; the network.py OAuth2 path needs an Admin-configured database pointing at an attacker-controlled token endpoint.",
+              "reachable_by_default": false
             }
           ],
           "caveats": [
-            "DEMO: scripted output, not a real analysis."
+            "DEMO: scripted replay of the real triage of issue #3, not a live analysis."
           ]
         }
       },
