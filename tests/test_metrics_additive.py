@@ -399,6 +399,7 @@ def test_all_preexisting_metrics_keys_keep_their_values():
         "enabled": settings.upstream_sync_enabled,
         "last_outcome": None,
         "last_at": None,
+        "last_detail": None,
         "changelog_pr_url": None,
         "conflict_issue_number": None,
         "changelog_through_sha": None,
