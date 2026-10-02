@@ -2,6 +2,7 @@ import pytest
 from test_fix import advance_to_fixing
 from test_pipeline import RecordingActions, make_deps, seed, state
 
+from app.devin_client import DevinError
 from app.escalation import NUDGE_MESSAGE, check_stuck
 from app.models import IssueState, SessionInfo, Stage
 from app.triage import start_triage
@@ -26,6 +27,35 @@ async def test_soft_timeout_nudges_once(tmp_path):
     assert not await check_stuck(deps, deps.db.get_session(session.session_id), info, actions)
     assert deps.devin.messages == [(session.session_id, NUDGE_MESSAGE)]
     assert state(deps, 1) is IssueState.TRIAGING
+
+
+async def test_failed_nudge_is_retried_until_delivered(tmp_path):
+    deps, session = await triaging(tmp_path)
+    actions = RecordingActions()
+    info = SessionInfo(session.session_id, "running", status_detail="working")
+    send_message = deps.devin.send_message
+    attempts = 0
+
+    async def fail_first_send(session_id, message):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise DevinError(503, "POST", f"/sessions/{session_id}/messages")
+        await send_message(session_id, message)
+
+    deps.devin.send_message = fail_first_send
+    deps.clock.now += deps.settings.soft_timeout_s
+
+    assert not await check_stuck(deps, session, info, actions)
+    assert deps.db.get_session(session.session_id).nudged is False
+    failures = [event for event in deps.db.list_events(1) if event.kind == "nudge_failed"]
+    assert [event.detail for event in failures] == ["DevinError"]
+
+    deps.clock.now += 1
+    assert not await check_stuck(deps, deps.db.get_session(session.session_id), info, actions)
+    assert deps.db.get_session(session.session_id).nudged is True
+    assert attempts == 2
+    assert deps.devin.messages == [(session.session_id, NUDGE_MESSAGE)]
 
 
 async def test_hard_timeout_escalates(tmp_path):

@@ -77,7 +77,11 @@ async def check_stuck(deps: Deps, session_row: SessionRow, info: SessionInfo, ac
         await archive_triage(deps, session_row)
         return True
     if age >= settings.soft_timeout_s and not session_row.nudged:
+        try:
+            await deps.devin.send_message(session_row.session_id, NUDGE_MESSAGE)
+        except Exception as exc:  # noqa: BLE001
+            deps.db.add_event(number, "nudge_failed", type(exc).__name__, now)
+            return False
         deps.db.update_session(session_row.session_id, nudged=True)
-        await deps.devin.send_message(session_row.session_id, NUDGE_MESSAGE)
         deps.db.add_event(number, "nudged", session_row.session_id, now)
     return False
