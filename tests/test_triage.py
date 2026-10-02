@@ -1,0 +1,412 @@
+from dataclasses import replace
+
+import pytest
+from test_pipeline import (
+    RecordingActions,
+    make_deps,
+    record_create_then_timeout,
+    run_ticks,
+    seed,
+    state,
+)
+
+from app.db import SessionRow
+from app.devin_client import DevinError
+from app.fake_devin import FakeDevin
+from app.fix import check_fix
+from app.models import Confidence, IssueState, PullRequestRef, RouteAction, SessionInfo, Stage, Verdict
+from app.router import parse_issue_facts, route
+from app.triage import TriageParseError, check_triage, parse_triage_output, start_triage
+
+OUTPUT = {
+    "issue_number": 1,
+    "package": "foo",
+    "installed_version": "1.0",
+    "head_sha": "abc",
+    "comment_url": "",
+    "caveats": ["c"],
+    "cves": [
+        {
+            "cve_id": "CVE-2026-23949",
+            "verdict": "REACHABLE",
+            "confidence": "medium",
+            "evidence": [{"file": "a.py", "line": 3, "description": "calls foo"}],
+            "notes": "n",
+        },
+        {"cve_id": "CVE-2026-2", "verdict": "UNKNOWN", "confidence": "sure", "evidence": []},
+    ],
+}
+
+
+class ScriptedDevin(FakeDevin):
+    def __init__(self):
+        super().__init__({})
+        self.script: list[SessionInfo] = []
+        self.fail_create = False
+
+    async def create_session(self, request):
+        if self.fail_create:
+            self.requests.append(request)
+            raise DevinError(400, "POST", "/sessions")
+        return await super().create_session(request)
+
+    async def get_session(self, session_id):
+        return self.script.pop(0)
+
+
+def test_parse_triage_output_maps_fields():
+    result = parse_triage_output(OUTPUT, 1)
+    first, second = result.cves
+    assert result.issue_number == 1
+    assert first.verdict is Verdict.REACHABLE and first.confidence is Confidence.MEDIUM
+    assert first.evidence == ("a.py:3 — calls foo",)
+    assert second.confidence is None
+    assert result.package == "foo" and result.caveats == ("c",)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [None, {}, {"cves": []}, {"cves": [{"cve_id": "CVE-1", "verdict": "MAYBE"}]}, {"cves": "x"}],
+)
+def test_parse_triage_output_rejects_invalid(output):
+    with pytest.raises(TriageParseError):
+        parse_triage_output(output, 1)
+
+
+def test_parse_triage_output_rejects_foreign_issue():
+    with pytest.raises(
+        TriageParseError,
+        match=r"triage output is for issue #2, expected #1",
+    ):
+        parse_triage_output({**OUTPUT, "issue_number": 2}, 1)
+
+
+@pytest.mark.parametrize("issue_number", ["1", True, None])
+def test_parse_triage_output_rejects_invalid_issue_number(issue_number):
+    with pytest.raises(TriageParseError):
+        parse_triage_output({**OUTPUT, "issue_number": issue_number}, 1)
+
+
+async def test_start_triage_creates_session_and_marks_in_progress(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    assert state(deps, 1) is IssueState.TRIAGING
+    request = deps.devin.requests[0]
+    assert request.title == "triage dmonroym0/superset#1"
+    assert request.tags == ("devin-superset-demo", "issue-1", "stage-triage")
+    assert actions.names(1) == ["mark_in_progress"]
+    row = deps.db.list_sessions(stage=Stage.TRIAGE, issue_number=1)[0]
+    assert row.max_acu_limit == 5 and row.devin_mode is None
+    assert deps.budget.committed() == 5
+
+
+async def test_ambiguous_triage_create_keeps_reservation_and_does_not_retry(tmp_path):
+    devin = FakeDevin.from_scenarios()
+    created = record_create_then_timeout(devin)
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    await run_ticks(deps, actions, ticks=3)
+
+    row = deps.db.get_issue(2)
+    assert row.state is IssueState.NEEDS_HUMAN
+    assert row.route_reason == "session creation outcome unknown; ACU reservation kept until reviewed"
+    assert deps.budget.committed() == deps.settings.triage_acu_cap
+    assert len(created) == 1
+    assert any(event.kind == "triage_create_ambiguous" for event in deps.db.list_events(2))
+    assert actions.names(2).count("mark_needs_human") == 1
+
+
+async def test_definite_triage_create_error_cancels_reservation(tmp_path):
+    devin = FakeDevin.from_scenarios()
+
+    async def fail_create(request):
+        raise DevinError(400, "POST", "/sessions")
+
+    devin.create_session = fail_create
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    assert state(deps, 2) is IssueState.ERROR
+    assert deps.budget.committed() == 0
+    assert any(event.kind == "triage_create_failed" for event in deps.db.list_events(2))
+
+
+async def _queue_issue_behind_triage_reservation(tmp_path):
+    deps = await make_deps(
+        tmp_path,
+        ACU_CEILING="5",
+        TRIAGE_ACU_CAP="5",
+        FIX_ACU_CAP="5",
+    )
+    actions = RecordingActions()
+    seed(deps, 1, 2)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert state(deps, 2) is IssueState.QUEUED_BUDGET
+
+    reservation = deps.db._connection.execute(
+        "SELECT id FROM ledger WHERE issue_number=1 AND stage='triage' AND cancelled=0"
+    ).fetchone()
+    assert reservation is not None
+    deps.budget.cancel(int(reservation["id"]))
+    return deps, actions, deps.budget.committed()
+
+
+async def test_closed_queued_triage_issue_is_cancelled_before_session(tmp_path):
+    deps, actions, committed_before = await _queue_issue_behind_triage_reservation(tmp_path)
+    deps.github.issues[2] = replace(deps.github.issues[2], state="closed")
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    issue = deps.db.get_issue(2)
+    assert issue.state is IssueState.CANCELLED
+    assert issue.route_reason == "issue closed"
+    assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(2))
+    assert deps.budget.committed() == committed_before
+    assert not any("issue-2" in request.tags for request in deps.devin.requests)
+    assert actions.names(2) == ["mark_queued_budget"]
+
+
+async def test_queued_triage_issue_without_trigger_label_is_cancelled(tmp_path):
+    deps, actions, committed_before = await _queue_issue_behind_triage_reservation(tmp_path)
+    issue = deps.github.issues[2]
+    deps.github.issues[2] = replace(
+        issue,
+        labels=tuple(label for label in issue.labels if label != deps.settings.trigger_label),
+    )
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    issue_row = deps.db.get_issue(2)
+    assert issue_row.state is IssueState.CANCELLED
+    assert issue_row.route_reason == "trigger label removed"
+    assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(2))
+    assert deps.budget.committed() == committed_before
+    assert not any("issue-2" in request.tags for request in deps.devin.requests)
+    assert actions.names(2) == ["mark_queued_budget"]
+
+
+async def test_start_triage_cas_loss_does_nothing(tmp_path):
+    deps = await make_deps(tmp_path)
+    seed(deps, 1)
+    stale = deps.db.get_issue(1)
+    deps.db.transition(1, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
+    await start_triage(deps, stale, RecordingActions())
+    assert deps.devin.requests == [] and deps.budget.committed() == 0
+
+
+async def test_create_failure_cancels_reservation_and_errors(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin, DEVIN_API_KEY="sk-secret-value")
+    devin.fail_create = True
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), RecordingActions())
+    row = deps.db.get_issue(1)
+    assert row.state is IssueState.ERROR
+    assert row.last_error.startswith("DevinError") and "sk-secret-value" not in row.last_error
+    assert deps.budget.committed() == 0
+
+
+async def test_queued_budget_marked_once(tmp_path):
+    deps = await make_deps(tmp_path, ACU_CEILING="5", TRIAGE_ACU_CAP="5", FIX_ACU_CAP="5")
+    actions = RecordingActions()
+    seed(deps, 1, 2)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    for _ in range(3):
+        await start_triage(deps, deps.db.get_issue(2), actions)
+    assert state(deps, 2) is IssueState.QUEUED_BUDGET
+    assert actions.names(2) == ["mark_queued_budget"]
+
+
+async def test_queued_budget_comment_retry_after_failure(tmp_path):
+    deps = await make_deps(tmp_path, ACU_CEILING="5", TRIAGE_ACU_CAP="5", FIX_ACU_CAP="5")
+    actions = RecordingActions()
+    seed(deps, 1, 2)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget"]
+
+    deps.db.add_event(2, "queued_budget_comment_failed", "x", deps.clock())
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget", "mark_queued_budget"]
+
+    deps.db.add_event(2, "queued_budget_commented", "x", deps.clock())
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget", "mark_queued_budget"]
+
+
+async def test_pr_on_an_unsettled_poll_rejects_triage(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    url = "https://github.com/dmonroym0/superset/pull/1"
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "running",
+            status_detail="working",
+            pull_requests=(PullRequestRef(url),),
+            structured_output=OUTPUT,
+        )
+    )
+    await check_triage(deps, session, actions)
+    assert state(deps, 1) is IssueState.NEEDS_HUMAN
+    route_call = next(c for c in actions.calls if c[0] == "apply_route")
+    assert route_call[3] is None and route_call[4] == (url,)
+    assert devin.archived == [session.session_id]
+
+
+async def test_suspended_triage_goes_to_needs_human_without_routing(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    decision = route(
+        parse_issue_facts(deps.github.issues[1].body),
+        parse_triage_output(OUTPUT, 1),
+    )
+    assert decision.action is RouteAction.FIX
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "suspended",
+            status_detail="waiting_for_approval",
+            structured_output=OUTPUT,
+        )
+    )
+
+    await check_triage(deps, session, actions)
+
+    issue = deps.db.get_issue(1)
+    assert issue.state is IssueState.NEEDS_HUMAN
+    assert issue.route_reason == "triage session suspended (waiting_for_approval)"
+    assert "mark_needs_human" in actions.names(1)
+    assert any(event.kind == "triage_suspended" for event in deps.db.list_events(1))
+    assert devin.archived == [session.session_id]
+    assert not any("stage-fix" in request.tags for request in devin.requests)
+
+
+async def test_foreign_triage_output_goes_to_needs_human(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "running",
+            status_detail="finished",
+            structured_output={**OUTPUT, "issue_number": 2},
+        )
+    )
+
+    await check_triage(deps, session, actions)
+
+    issue = deps.db.get_issue(1)
+    assert issue.state is IssueState.NEEDS_HUMAN
+    assert issue.route_reason == "triage output unusable: triage output is for issue #2, expected #1"
+    assert "mark_needs_human" in actions.names(1)
+    assert devin.archived == [session.session_id]
+    assert not any("stage-fix" in request.tags for request in devin.requests)
+
+
+async def test_settled_valid_output_is_triaged_and_archived(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), RecordingActions())
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "running",
+            status_detail="finished",
+            structured_output=OUTPUT,
+            acus_consumed=1.5,
+        )
+    )
+    await check_triage(deps, session, RecordingActions())
+    assert state(deps, 1) is IssueState.TRIAGED
+    stored = deps.db.get_session(session.session_id)
+    assert stored.structured_output == OUTPUT and stored.acus_consumed == 1.5 and stored.archived
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        SessionInfo("x", "exit", structured_output={"cves": []}),
+        SessionInfo("x", "error", structured_output=OUTPUT),
+    ],
+)
+async def test_unusable_output_is_needs_human(tmp_path, info):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(info)
+    await check_triage(deps, session, actions)
+    assert state(deps, 1) is IssueState.NEEDS_HUMAN
+    assert "mark_needs_human" in actions.names(1)
+
+
+@pytest.mark.parametrize(
+    ("pull_requests", "expected_state"),
+    [
+        ((PullRequestRef("https://github.com/dmonroym0/superset/pull/1"),), IssueState.PR_OPENED),
+        ((), IssueState.NEEDS_HUMAN),
+    ],
+)
+async def test_suspended_fix_sessions_keep_existing_outcomes(tmp_path, pull_requests, expected_state):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    deps.db.transition(1, [IssueState.SEEN], IssueState.FIXING, deps.clock())
+    session = SessionRow(
+        session_id="fix-1",
+        issue_number=1,
+        stage=Stage.FIX,
+        status="running",
+        status_detail="working",
+        devin_mode=None,
+        max_acu_limit=15,
+        acus_consumed=0.0,
+        url=None,
+        created_at=deps.clock(),
+        updated_at=deps.clock(),
+    )
+    deps.db.insert_session(session)
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "suspended",
+            status_detail="paused",
+            pull_requests=pull_requests,
+        )
+    )
+
+    await check_fix(deps, session, actions)
+
+    assert state(deps, 1) is expected_state
+    if pull_requests:
+        assert deps.db.get_issue(1).pr_url == pull_requests[0].pr_url
+    else:
+        assert deps.db.get_issue(1).route_reason == "fix session suspended (paused)"
+    assert devin.archived == []

@@ -1,0 +1,345 @@
+{
+  "_note": "Scripted Fake Devin outcomes. 'source' says whether the outcome mirrors what really happened on dmonroym0/superset or is illustrative. polls = number of GET session calls before the session settles.",
+  "issues": {
+    "1": {
+      "source": "illustrative (real PR #6 exists for this bump)",
+      "triage": {
+        "polls": 2,
+        "pull_requests": [],
+        "structured_output": {
+          "issue_number": 1,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/1#triage",
+          "package": "jaraco-context",
+          "installed_version": "6.0.1",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-2026-23949",
+              "verdict": "REACHABLE",
+              "evidence": [
+                {
+                  "file": "requirements/development.txt",
+                  "line": 1,
+                  "description": "pinned dev dependency used by setuptools tooling during test runs"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "medium",
+              "notes": "Dev-only path.",
+              "reachable_by_default": false
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "fix": {
+        "polls": 3,
+        "pull_requests": [
+          {
+            "pr_url": "https://github.com/dmonroym0/superset/pull/101",
+            "pr_state": "open"
+          }
+        ]
+      },
+      "expected": "pr_opened"
+    },
+    "2": {
+      "source": "mirrors real triage comment on issue #2",
+      "triage": {
+        "polls": 2,
+        "pull_requests": [],
+        "structured_output": {
+          "issue_number": 2,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/2#triage",
+          "package": "python-multipart",
+          "installed_version": "0.0.29",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-2026-53538",
+              "verdict": "NOT_REACHABLE",
+              "evidence": [
+                {
+                  "file": "fastmcp/server/auth/auth.py",
+                  "line": 295,
+                  "description": "TokenVerifier.get_routes() returns [] so no request.form() handler is mounted"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": ""
+            },
+            {
+              "cve_id": "CVE-2026-53539",
+              "verdict": "NOT_REACHABLE",
+              "evidence": [
+                {
+                  "file": "mcp/server/streamable_http.py",
+                  "line": 491,
+                  "description": "transport reads request.body() as JSON; QuerystringParser never runs"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": ""
+            },
+            {
+              "cve_id": "CVE-2026-53540",
+              "verdict": "NOT_REACHABLE",
+              "evidence": [
+                {
+                  "file": "python_multipart/multipart.py",
+                  "line": 1857,
+                  "description": "parse_form() has zero call sites"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": ""
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "expected": "not_reachable"
+    },
+    "3": {
+      "source": "mirrors real triage comment on issue #3",
+      "triage": {
+        "polls": 2,
+        "pull_requests": [],
+        "structured_output": {
+          "issue_number": 3,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/3#triage",
+          "package": "urllib3",
+          "installed_version": "2.7.0",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-2026-97687",
+              "verdict": "NOT_REACHABLE",
+              "evidence": [
+                {
+                  "file": "requirements/base.txt",
+                  "line": 1,
+                  "description": "vulnerable option never used by Superset call sites"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": ""
+            },
+            {
+              "cve_id": "CVE-2026-97688",
+              "verdict": "REACHABLE",
+              "evidence": [
+                {
+                  "file": "superset/reports/notifications/webhook.py",
+                  "line": 1,
+                  "description": "outbound webhook request via requests/urllib3",
+                  "entry_point": "Celery report task"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": "",
+              "reachable_by_default": true
+            },
+            {
+              "cve_id": "CVE-2026-97689",
+              "verdict": "REACHABLE",
+              "evidence": [
+                {
+                  "file": "superset/utils/network.py",
+                  "line": 1,
+                  "description": "outbound HTTP via urllib3",
+                  "entry_point": "database connection test"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": "",
+              "reachable_by_default": true
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "fix": {
+        "polls": 3,
+        "pull_requests": [
+          {
+            "pr_url": "https://github.com/dmonroym0/superset/pull/103",
+            "pr_state": "open"
+          }
+        ]
+      },
+      "expected": "pr_opened"
+    },
+    "4": {
+      "source": "outcome mirrors reality (pytest 7 -> 9 needed stacked PRs #7/#8 and a human); verdict illustrative",
+      "triage": {
+        "polls": 2,
+        "pull_requests": [],
+        "structured_output": {
+          "issue_number": 4,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/4#triage",
+          "package": "pytest",
+          "installed_version": "7.4.4",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-2025-71176",
+              "verdict": "REACHABLE",
+              "evidence": [
+                {
+                  "file": "requirements/development.txt",
+                  "line": 1,
+                  "description": "pytest runs in CI and local test runs"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "medium",
+              "notes": "Dev-only.",
+              "reachable_by_default": false
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "expected": "needs_human"
+    },
+    "5": {
+      "source": "illustrative",
+      "triage": {
+        "polls": 2,
+        "pull_requests": [],
+        "structured_output": {
+          "issue_number": 5,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/5#triage",
+          "package": "fast-uri",
+          "installed_version": "3.1.7",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-2026-86472",
+              "verdict": "UNKNOWN",
+              "evidence": [
+                {
+                  "file": "superset-frontend/package-lock.json",
+                  "line": 1,
+                  "description": "transitive via webpack -> schema-utils -> ajv; build-time only, call path not traced"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "low",
+              "notes": ""
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "expected": "needs_human"
+    }
+  },
+  "synthetic": {
+    "9001": {
+      "source": "synthetic test: triage session opened a PR (read-only violation)",
+      "triage": {
+        "polls": 1,
+        "pull_requests": [
+          {
+            "pr_url": "https://github.com/dmonroym0/superset/pull/9001",
+            "pr_state": "open"
+          }
+        ],
+        "structured_output": {
+          "issue_number": 9001,
+          "comment_url": "https://demo.invalid/dmonroym0/superset/issues/9001#triage",
+          "package": "example",
+          "installed_version": "1.0.0",
+          "head_sha": "demo0000000000000000000000000000000000000",
+          "cves": [
+            {
+              "cve_id": "CVE-0000-0001",
+              "verdict": "REACHABLE",
+              "evidence": [
+                {
+                  "file": "superset/app.py",
+                  "line": 1,
+                  "description": "synthetic"
+                }
+              ],
+              "gating": {
+                "feature_flags": [],
+                "config_options": [],
+                "required_permissions": []
+              },
+              "confidence": "high",
+              "notes": ""
+            }
+          ],
+          "caveats": [
+            "DEMO: scripted output, not a real analysis."
+          ]
+        }
+      },
+      "expected": "needs_human"
+    },
+    "9002": {
+      "source": "synthetic test: session never settles (escalation)",
+      "triage": {
+        "polls": null,
+        "pull_requests": [],
+        "structured_output": null
+      },
+      "expected": "needs_human"
+    }
+  }
+}

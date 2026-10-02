@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="5">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Forkfix operations board</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; background: #f3f6fa; color: #172338; }
+      body { margin: 0; padding: 2rem; }
+      main { max-width: 1440px; margin: auto; }
+      header, .tile, section { background: white; border: 1px solid #dbe3ed; border-radius: 12px; }
+      header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; }
+      h1, h2, p { margin-top: 0; }
+      h1 { margin-bottom: 0; font-size: 1.5rem; }
+      h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+      .badge { border-radius: 999px; padding: .35rem .75rem; font-weight: 700; text-transform: uppercase; background: #dceafe; color: #174ea6; }
+      .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .8rem; margin: 1rem 0; }
+      .tile { padding: 1rem; }
+      .tile span { display: block; color: #5b687a; font-size: .85rem; }
+      .tile strong { display: block; margin-top: .4rem; font-size: 1.5rem; }
+      section { margin: 1rem 0; padding: 1.25rem; overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+      th, td { text-align: left; padding: .65rem; border-bottom: 1px solid #e7ecf2; vertical-align: top; }
+      th { color: #526174; white-space: nowrap; }
+      a { color: #1558a6; }
+      .bar { height: 12px; margin-top: .6rem; background: #e6edf5; border-radius: 8px; overflow: hidden; }
+      .bar span { display: block; height: 100%; background: #2475d0; }
+      .muted { color: #657286; }
+      @media (max-width: 640px) { body { padding: 1rem; } header { align-items: flex-start; gap: 1rem; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Forkfix operations board</h1>
+        <span class="badge">{{ metrics.mode | upper }}</span>
+      </header>
+
+      <div class="tiles">
+        <div class="tile"><span>Issues seen</span><strong>{{ metrics.issues.seen }}</strong></div>
+        <div class="tile"><span>PR opened</span><strong>{{ metrics.issues.pr_opened }}</strong></div>
+        <div class="tile"><span>Needs human</span><strong>{{ metrics.issues.needs_human }}</strong></div>
+        <div class="tile"><span>Not reachable</span><strong>{{ metrics.issues.not_reachable }}</strong></div>
+        <div class="tile"><span>Cancelled</span><strong>{{ metrics.issues.cancelled }}</strong></div>
+        <div class="tile"><span>Automation rate</span><strong>{{ metrics.automation_rate | percentage }}</strong></div>
+        <div class="tile"><span>Median time to PR</span><strong>{{ metrics.median_time_to_pr_s | duration }}</strong></div>
+        <div class="tile">
+          <span>ACUs committed vs ceiling</span>
+          <strong>{{ metrics.acu.committed }} / {{ metrics.acu.ceiling }}</strong>
+          <div class="bar" role="img" aria-label="ACU ceiling utilization">
+            <span style="width: {{ acu_percent }}%"></span>
+          </div>
+          <small>runtime ceiling across all issues</small>
+        </div>
+      </div>
+
+      <section>
+        <h2>Issues</h2>
+        <table>
+          <thead><tr><th>Number</th><th>Title</th><th>State</th><th>Route reason</th><th>Pull request</th></tr></thead>
+          <tbody>
+            {% for issue in metrics.issues_detail %}
+            <tr>
+              <td><a href="{{ issue.url }}">{{ issue.number }}</a></td>
+              <td>{{ issue.title }}</td>
+              <td>{{ issue.state }}</td>
+              <td>{{ issue.route_reason or "—" }}</td>
+              <td>
+                {% if issue.pr_url | fork_pr_url %}
+                <a href="{{ issue.pr_url | fork_pr_url }}">{{ issue.pr_url }}</a>
+                {% else %}
+                {{ issue.pr_url or "—" }}
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="muted">No issues recorded.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Sessions</h2>
+        <table>
+          <thead><tr><th>Session</th><th>Issue</th><th>Stage</th><th>Status / detail</th><th>Mode</th><th>Max ACUs</th><th>ACUs consumed</th></tr></thead>
+          <tbody>
+            {% for session in metrics.sessions %}
+            <tr>
+              <td>
+                {% if session.url | https_url %}
+                <a href="{{ session.url | https_url }}">{{ session.session_id }}</a>
+                {% else %}
+                {{ session.session_id }}
+                {% endif %}
+              </td>
+              <td>{{ session.issue_number }}</td>
+              <td>{{ session.stage }}</td>
+              <td>{{ session.status }}{% if session.status_detail %} / {{ session.status_detail }}{% endif %}</td>
+              <td>{{ session.devin_mode if session.devin_mode is not none else "org default" }}</td>
+              <td>{{ session.max_acu_limit }}</td>
+              <td>{{ session.acus_consumed }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="muted">No sessions recorded.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Recent events</h2>
+        <table>
+          <thead><tr><th>Time (UTC)</th><th>Issue</th><th>Kind</th><th>Detail</th></tr></thead>
+          <tbody>
+            {% for event in events %}
+            <tr><td>{{ event.created_at }}</td><td>{{ event.issue_number or "—" }}</td><td>{{ event.kind }}</td><td>{{ event.detail }}</td></tr>
+            {% else %}
+            <tr><td colspan="4" class="muted">No events recorded.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

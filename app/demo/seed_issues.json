@@ -1,0 +1,59 @@
+{
+  "_note": "Titles and bodies copied from dmonroym0/superset issues #1-#5. devin:fixplease is pre-applied to #2-#4 for the demo; #1 and #5 are labeled via scripts/simulate_webhook.py.",
+  "repo": "dmonroym0/superset",
+  "issues": [
+    {
+      "number": 1,
+      "title": "[Security] Upgrade jaraco-context 6.0.1 -> 6.1.0 (High)",
+      "body": "Package: jaraco-context (pip, dev)\nCurrent -> fixed: 6.0.1 -> 6.1.0 (minor)\nCVEs: CVE-2026-23949\nFiles: requirements/development.txt\nRisk notes: Low risk. Transitive only, pulled in by keyring (`# via keyring`). Confirmed at HEAD with pip-audit.\n\nAcceptance criteria:\n- Dependency upgraded and lockfile updated (diff limited to this package)\n- Existing tests pass (targeted tests, compared to baseline)\n- PR description lists CVEs, version change, commands run, and results\n- If tests fail because of the bump, stop and explain instead of forcing it\n",
+      "labels": [
+        "security"
+      ],
+      "state": "open",
+      "html_url": "https://github.com/dmonroym0/superset/issues/1"
+    },
+    {
+      "number": 2,
+      "title": "[Security] Upgrade python-multipart 0.0.29 -> 0.0.31 (High)",
+      "body": "Package: python-multipart (pip, dev)\nCurrent -> fixed: 0.0.29 -> 0.0.31 (patch)\nCVEs: CVE-2026-53539, CVE-2026-53538, CVE-2026-53540\nFiles: requirements/development.txt\nRisk notes: Transitive via fastmcp-slim and mcp. One fix changes semicolon parsing in query strings; affects fastmcp/mcp paths only, so run the MCP-related tests. Confirmed at HEAD with pip-audit.\n\nAcceptance criteria:\n- Dependency upgraded and lockfile updated (diff limited to this package)\n- Existing tests pass (targeted tests, compared to baseline)\n- PR description lists CVEs, version change, commands run, and results\n- If tests fail because of the bump, stop and explain instead of forcing it\n",
+      "labels": [
+        "security",
+        "devin:fixplease"
+      ],
+      "state": "open",
+      "html_url": "https://github.com/dmonroym0/superset/issues/2"
+    },
+    {
+      "number": 3,
+      "title": "[Security] Upgrade urllib3 2.7.0 -> 2.8.0 (High)",
+      "body": "Package: urllib3 (pip, runtime)\nCurrent -> fixed: 2.7.0 -> 2.8.0 (minor)\nCVEs: CVE-2026-97687, CVE-2026-97689, CVE-2026-97688\nFiles: requirements/base.txt, requirements/development.txt (constraint in requirements/base.in: urllib3>=2.6.3,<3.0.0)\nRisk notes: Runtime dependency. pyproject.toml warns docker/testcontainers are sensitive to the requests/urllib3 versions; run tests/testcontainers if possible. Confirmed at HEAD with pip-audit.\n\nAcceptance criteria:\n- Dependency upgraded and lockfile updated (diff limited to this package)\n- Existing tests pass (targeted tests, compared to baseline)\n- PR description lists CVEs, version change, commands run, and results\n- If tests fail because of the bump, stop and explain instead of forcing it\n",
+      "labels": [
+        "security",
+        "devin:fixplease"
+      ],
+      "state": "open",
+      "html_url": "https://github.com/dmonroym0/superset/issues/3"
+    },
+    {
+      "number": 4,
+      "title": "[Security] Upgrade pytest 7.4.4 -> 9.0.3 (Moderate)",
+      "body": "Package: pytest (pip, dev)\nCurrent -> fixed: 7.4.4 -> 9.0.3 (major)\nCVEs: CVE-2025-71176\nFiles: requirements/development.txt (constraint in pyproject.toml development extra: pytest<10.0.0; also required by superset-extensions-cli)\nRisk notes: MAJOR bump across two versions (7 -> 9). High risk of breaking tests and pytest plugins (pytest-asyncio, pytest-cov, pytest-mock, pytest-xdist); expected to need a human. Confirmed at HEAD with pip-audit.\n\nAcceptance criteria:\n- Dependency upgraded and lockfile updated (diff limited to this package)\n- Existing tests pass (targeted tests, compared to baseline)\n- PR description lists CVEs, version change, commands run, and results\n- If tests fail because of the bump, stop and explain instead of forcing it\n",
+      "labels": [
+        "security",
+        "devin:fixplease"
+      ],
+      "state": "open",
+      "html_url": "https://github.com/dmonroym0/superset/issues/4"
+    },
+    {
+      "number": 5,
+      "title": "[Security] Upgrade fast-uri 3.1.7 -> 3.1.8 (Moderate)",
+      "body": "Package: fast-uri (npm, dev)\nCurrent -> fixed: 3.1.7 -> 3.1.8 (patch)\nCVEs: CVE-2026-86472 (GHSA-hrr3-gc8f-f4qj)\nFiles: superset-embedded-sdk/package.json, superset-embedded-sdk/package-lock.json\nRisk notes: Low risk. Transitive dev dependency (webpack -> schema-utils -> ajv -> fast-uri). superset-embedded-sdk/package.json has no override yet (superset-frontend already overrides to ^3.1.8). Confirmed at HEAD with `npm audit --package-lock-only`.\n\nAcceptance criteria:\n- Dependency upgraded and lockfile updated (diff limited to this package)\n- Existing tests pass (targeted tests, compared to baseline)\n- PR description lists CVEs, version change, commands run, and results\n- If tests fail because of the bump, stop and explain instead of forcing it\n",
+      "labels": [
+        "security"
+      ],
+      "state": "open",
+      "html_url": "https://github.com/dmonroym0/superset/issues/5"
+    }
+  ]
+}

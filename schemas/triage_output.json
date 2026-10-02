@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["issue_number", "comment_url", "package", "installed_version", "head_sha", "cves", "caveats"],
+  "properties": {
+    "issue_number": {"type": "integer"},
+    "comment_url": {"type": "string"},
+    "package": {"type": "string"},
+    "installed_version": {"type": "string"},
+    "head_sha": {"type": "string"},
+    "cves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cve_id", "verdict", "evidence", "gating"],
+        "properties": {
+          "cve_id": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["REACHABLE", "NOT_REACHABLE", "UNKNOWN"]},
+          "reachable_by_default": {"type": "boolean"},
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["file", "line", "description"], "properties": {"file": {"type": "string"}, "line": {"type": "integer"}, "entry_point": {"type": "string"}, "description": {"type": "string"}}}},
+          "gating": {
+            "type": "object",
+            "required": ["feature_flags", "config_options", "required_permissions"],
+            "properties": {
+              "feature_flags": {"type": "array", "items": {"type": "object", "required": ["name", "default"], "properties": {"name": {"type": "string"}, "default": {"type": "boolean"}, "file": {"type": "string"}, "line": {"type": "integer"}}}},
+              "config_options": {"type": "array", "items": {"type": "object", "required": ["name", "default"], "properties": {"name": {"type": "string"}, "default": {"type": "string"}, "effect": {"type": "string"}}}},
+              "required_permissions": {"type": "array", "items": {"type": "object", "required": ["permission", "view", "min_role"], "properties": {"permission": {"type": "string"}, "view": {"type": "string"}, "min_role": {"type": "string", "enum": ["Admin", "Alpha", "Gamma", "sql_lab", "Public", "Guest", "Unauthenticated"]}}}}
+            }
+          },
+          "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "caveats": {"type": "array", "items": {"type": "string"}}
+  }
+}
