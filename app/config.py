@@ -62,6 +62,10 @@ class Settings:
     db_path: str
     host: str
     port: int
+    upstream_sync_enabled: bool
+    upstream_sync_interval_s: int
+    upstream_sync_branch: str
+    demo_upstream_scenario: str
     # Host curls through Compose's 127.0.0.1:8000:8000 publish arrive from its 172.16/12 bridge gateway.
     sweep_allowed_cidrs: tuple[str, ...] = ("127.0.0.0/8", "::1/128", "172.16.0.0/12")
 
@@ -96,6 +100,22 @@ class Settings:
         soft_timeout = integer("SOFT_TIMEOUT_S", 1800)
         hard_timeout = integer("HARD_TIMEOUT_S", 5400)
         port = integer("PORT", 8000)
+        sync_interval = integer("UPSTREAM_SYNC_INTERVAL_S", 86400)
+        sync_enabled_default = mode is Mode.DEMO
+        raw_sync_enabled = env.get("UPSTREAM_SYNC_ENABLED")
+        if raw_sync_enabled is None:
+            sync_enabled = sync_enabled_default
+        elif raw_sync_enabled.strip().lower() in {"1", "true", "yes", "on"}:
+            sync_enabled = True
+        elif raw_sync_enabled.strip().lower() in {"0", "false", "no", "off"}:
+            sync_enabled = False
+        else:
+            problems.append("UPSTREAM_SYNC_ENABLED invalid")
+            sync_enabled = sync_enabled_default
+        upstream_branch = env.get("UPSTREAM_SYNC_BRANCH", "master")
+        demo_upstream_scenario = env.get("DEMO_UPSTREAM_SCENARIO", "merge")
+        if mode is Mode.DEMO and demo_upstream_scenario not in {"merge", "conflict"}:
+            problems.append("DEMO_UPSTREAM_SCENARIO invalid")
         sweep_allowed_cidrs = tuple(
             part.strip()
             for part in env.get("SWEEP_ALLOWED_CIDRS", "127.0.0.0/8,::1/128,172.16.0.0/12").split(",")
@@ -148,6 +168,10 @@ class Settings:
             db_path=env.get("DB_PATH") or f"{env.get('DATA_DIR', 'data')}/forkfix-{mode.value}.db",
             host=env.get("HOST", "0.0.0.0"),
             port=port,
+            upstream_sync_enabled=sync_enabled,
+            upstream_sync_interval_s=sync_interval,
+            upstream_sync_branch=upstream_branch,
+            demo_upstream_scenario=demo_upstream_scenario,
             sweep_allowed_cidrs=sweep_allowed_cidrs,
         )
 

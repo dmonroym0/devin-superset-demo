@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 FORK_REPO = "dmonroym0/superset"
+UPSTREAM_REPO = "apache/superset"
 
 
 class Mode(StrEnum):
@@ -104,6 +105,26 @@ class Issue:
     html_url: str = ""
     repo: str = FORK_REPO
     is_pull_request: bool = False
+
+
+@dataclass(frozen=True)
+class MergeUpstreamResult:
+    outcome: Literal["merged", "fast-forward", "none", "conflict", "error"]
+    message: str
+
+
+@dataclass(frozen=True)
+class UpstreamCommit:
+    sha: str
+    subject: str
+    is_merge: bool
+
+
+@dataclass(frozen=True)
+class CompareResult:
+    commits: tuple[UpstreamCommit, ...]
+    files: tuple[str, ...]
+    files_truncated: bool = False
 
 
 @dataclass(frozen=True)

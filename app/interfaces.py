@@ -7,7 +7,15 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from app.models import Issue, LabelSpec, Playbook, SessionInfo, SessionRequest
+from app.models import (
+    CompareResult,
+    Issue,
+    LabelSpec,
+    MergeUpstreamResult,
+    Playbook,
+    SessionInfo,
+    SessionRequest,
+)
 
 if TYPE_CHECKING:
     from app.budget import Budget
@@ -35,6 +43,19 @@ class GitHubClient(Protocol):
 
     async def close_issue(self, number: int, reason: str = "not_planned") -> None: ...
     async def create_issue(self, title: str, body: str, labels: Sequence[str]) -> Issue: ...
+    async def get_branch_sha(self, branch: str) -> str: ...
+    async def merge_upstream(self, branch: str) -> MergeUpstreamResult: ...
+    async def compare(self, base: str, head: str) -> CompareResult: ...
+    async def create_changelog_pr(
+        self,
+        base_branch: str,
+        head_sha: str,
+        branch_name: str,
+        content: str,
+        title: str,
+        body: str,
+    ) -> str: ...
+    async def get_file(self, path: str, ref: str) -> str | None: ...
     async def aclose(self) -> None: ...
 
 

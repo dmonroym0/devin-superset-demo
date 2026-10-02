@@ -29,6 +29,47 @@ def test_live_defaults_do_not_require_credentials():
     assert settings.poll_interval_s == 15
 
 
+def test_upstream_sync_defaults_by_mode():
+    demo = Settings.from_env({})
+    live = Settings.from_env({"APP_MODE": "live"})
+
+    assert demo.upstream_sync_enabled is True
+    assert live.upstream_sync_enabled is False
+    assert demo.upstream_sync_interval_s == 86400
+    assert demo.upstream_sync_branch == "master"
+    assert demo.demo_upstream_scenario == "merge"
+
+
+def test_upstream_sync_settings_can_be_overridden():
+    settings = Settings.from_env(
+        {
+            "APP_MODE": "demo",
+            "UPSTREAM_SYNC_ENABLED": "false",
+            "UPSTREAM_SYNC_INTERVAL_S": "3600",
+            "UPSTREAM_SYNC_BRANCH": "stable",
+            "DEMO_UPSTREAM_SCENARIO": "conflict",
+        }
+    )
+
+    assert settings.upstream_sync_enabled is False
+    assert settings.upstream_sync_interval_s == 3600
+    assert settings.upstream_sync_branch == "stable"
+    assert settings.demo_upstream_scenario == "conflict"
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"UPSTREAM_SYNC_ENABLED": "sometimes"},
+        {"UPSTREAM_SYNC_INTERVAL_S": "0"},
+        {"DEMO_UPSTREAM_SCENARIO": "missing"},
+    ],
+)
+def test_invalid_upstream_sync_settings_are_rejected(environment):
+    with pytest.raises(ConfigError):
+        Settings.from_env(environment)
+
+
 def test_secret_repr_and_string_hide_value():
     secret = Secret("very-sensitive-value")
 

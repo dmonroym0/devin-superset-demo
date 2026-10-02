@@ -68,5 +68,6 @@ def register(app: FastAPI, deps: Deps) -> None:
                 metrics=snapshot,
                 events=events,
                 acu_percent=acu_percent,
+                fork_repo=FORK_REPO,
             )
         )

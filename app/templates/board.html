@@ -82,6 +82,30 @@
       </section>
 
       <section>
+        <h2>Upstream sync</h2>
+        <p>Enabled: {{ metrics.upstream_sync.enabled }}</p>
+        <p>Last outcome: {{ metrics.upstream_sync.last_outcome or "—" }}</p>
+        <p>Last run: {{ metrics.upstream_sync.last_at or "—" }}</p>
+        <p>Changelog through: {{ metrics.upstream_sync.changelog_through_sha or "—" }}</p>
+        <p>
+          Changelog PR:
+          {% if metrics.upstream_sync.changelog_pr_url | fork_pr_url %}
+          <a href="{{ metrics.upstream_sync.changelog_pr_url | fork_pr_url }}">{{ metrics.upstream_sync.changelog_pr_url }}</a>
+          {% else %}
+          {{ metrics.upstream_sync.changelog_pr_url or "—" }}
+          {% endif %}
+        </p>
+        <p>
+          Conflict issue:
+          {% if metrics.upstream_sync.conflict_issue_number %}
+          <a href="https://github.com/{{ fork_repo }}/issues/{{ metrics.upstream_sync.conflict_issue_number }}">{{ metrics.upstream_sync.conflict_issue_number }}</a>
+          {% else %}
+          —
+          {% endif %}
+        </p>
+      </section>
+
+      <section>
         <h2>Sessions</h2>
         <table>
           <thead><tr><th>Session</th><th>Issue</th><th>Stage</th><th>Status / detail</th><th>Mode</th><th>Max ACUs</th><th>ACUs consumed</th></tr></thead>

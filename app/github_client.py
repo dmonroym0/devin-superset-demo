@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from collections.abc import Sequence
 from urllib.parse import quote, urljoin, urlsplit
@@ -10,7 +11,14 @@ import httpx
 
 from app.config import Settings
 from app.interfaces import GitHubClient
-from app.models import Issue, LabelSpec, Mode
+from app.models import (
+    CompareResult,
+    Issue,
+    LabelSpec,
+    MergeUpstreamResult,
+    Mode,
+    UpstreamCommit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +37,7 @@ def build_github_client(settings: Settings) -> GitHubClient:
         # local import: app.fake_github imports GitHubError from this module
         from app.fake_github import FakeGitHub
 
-        return FakeGitHub.from_seed()
+        return FakeGitHub.from_seed(upstream_scenario=settings.demo_upstream_scenario)
     return HttpGitHubClient(settings)
 
 
@@ -211,5 +219,161 @@ class HttpGitHubClient:
         )
         return self._to_issue(response.json())
 
+    async def get_branch_sha(self, branch: str) -> str:
+        response = await self._request("GET", f"{self._repo_path}/branches/{quote(branch, safe='')}")
+        return response.json()["commit"]["sha"]
+
+    async def merge_upstream(self, branch: str) -> MergeUpstreamResult:
+        response = await self._request(
+            "POST",
+            f"{self._repo_path}/merge-upstream",
+            json={"branch": branch},
+            ok_statuses=(409, 422),
+        )
+        message = _response_message(response)
+        if response.status_code == 409:
+            return MergeUpstreamResult("conflict", message)
+        if response.status_code == 422:
+            return MergeUpstreamResult("error", message)
+        merge_type = response.json().get("merge_type")
+        outcome = "merged" if merge_type == "merge" else merge_type
+        if outcome not in {"merged", "fast-forward", "none"}:
+            return MergeUpstreamResult("error", message or "unknown merge type")
+        return MergeUpstreamResult(outcome, message)
+
+    async def compare(self, base: str, head: str) -> CompareResult:
+        path = f"{self._repo_path}/compare/{quote(base, safe='')}...{quote(head, safe='')}"
+        commits: list[UpstreamCommit] = []
+        files: tuple[str, ...] = ()
+        files_truncated = False
+        total_commits = None
+        page = 1
+        while True:
+            response = await self._request(
+                "GET",
+                path,
+                params={"per_page": 100, "page": page},
+            )
+            data = response.json()
+            page_commits = data.get("commits", [])
+            if page == 1:
+                total_commits = data.get("total_commits")
+                page_files = data.get("files", [])
+                files = tuple(item["filename"] for item in page_files if item.get("filename"))
+                files_truncated = len(page_files) >= 300
+            commits.extend(
+                UpstreamCommit(
+                    sha=item.get("sha", ""),
+                    subject=(item.get("commit", {}).get("message") or "").splitlines()[0],
+                    is_merge=len(item.get("parents", ())) > 1,
+                )
+                for item in page_commits
+            )
+            if (total_commits is not None and len(commits) >= total_commits) or len(page_commits) < 100:
+                break
+            page += 1
+        return CompareResult(tuple(commits), files, files_truncated)
+
+    async def _get_file_details(self, path: str, ref: str) -> tuple[str | None, str | None]:
+        response = await self._request(
+            "GET",
+            f"{self._repo_path}/contents/{quote(path, safe='/')}",
+            params={"ref": ref},
+            ok_statuses=(404,),
+        )
+        if response.status_code == 404:
+            return None, None
+        data = response.json()
+        if data.get("encoding") != "base64":
+            blob_sha = data.get("sha")
+            if not blob_sha:
+                raise GitHubError(
+                    500,
+                    "GET",
+                    f"{self._repo_path}/contents/{quote(path, safe='/')}",
+                )
+            blob_path = f"{self._repo_path}/git/blobs/{quote(blob_sha, safe='')}"
+            response = await self._request("GET", blob_path)
+            data = response.json()
+            if data.get("encoding") != "base64":
+                raise GitHubError(500, "GET", blob_path)
+        content = base64.b64decode(data.get("content", "")).decode("utf-8")
+        return content, data.get("sha")
+
+    async def get_file(self, path: str, ref: str) -> str | None:
+        content, _ = await self._get_file_details(path, ref)
+        return content
+
+    async def create_changelog_pr(
+        self,
+        base_branch: str,
+        head_sha: str,
+        branch_name: str,
+        content: str,
+        title: str,
+        body: str,
+    ) -> str:
+        ref = await self._request(
+            "POST",
+            f"{self._repo_path}/git/refs",
+            json={"ref": f"refs/heads/{branch_name}", "sha": head_sha},
+            ok_statuses=(422,),
+        )
+        if ref.status_code == 422 and "reference already exists" not in _response_message(ref).lower():
+            raise GitHubError(422, "POST", f"{self._repo_path}/git/refs")
+
+        existing_content, file_sha = await self._get_file_details("FORK_CHANGELOG.md", branch_name)
+        if existing_content != content:
+            payload = {
+                "message": title,
+                "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                "branch": branch_name,
+            }
+            if file_sha is not None:
+                payload["sha"] = file_sha
+            await self._request(
+                "PUT",
+                f"{self._repo_path}/contents/FORK_CHANGELOG.md",
+                json=payload,
+            )
+
+        pull = await self._request(
+            "POST",
+            f"{self._repo_path}/pulls",
+            json={"title": title, "head": branch_name, "base": base_branch, "body": body},
+            ok_statuses=(422,),
+        )
+        if pull.status_code == 422:
+            if "a pull request already exists" not in _response_message(pull).lower():
+                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+            existing = await self._request(
+                "GET",
+                f"{self._repo_path}/pulls",
+                params={"head": f"{self._settings.github_repo.split('/')[0]}:{branch_name}", "state": "open"},
+            )
+            matches = existing.json()
+            if not matches:
+                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+            return matches[0]["html_url"]
+        return pull.json()["html_url"]
+
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+def _response_message(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+    except (ValueError, AttributeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    messages = [data.get("message")] if isinstance(data.get("message"), str) else []
+    errors = data.get("errors", [])
+    if isinstance(errors, list):
+        for error in errors:
+            if isinstance(error, dict):
+                messages.extend(value for value in error.values() if isinstance(value, str))
+            elif isinstance(error, str):
+                messages.append(error)
+    return " ".join(messages)

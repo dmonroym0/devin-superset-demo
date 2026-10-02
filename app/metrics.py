@@ -9,6 +9,7 @@ from app.budget import Budget
 from app.config import Settings
 from app.db import Database, IssueRow, SessionRow
 from app.models import IssueState
+from app.upstream_sync import branch_meta_key
 
 _IN_FLIGHT = {
     IssueState.SEEN,
@@ -75,6 +76,10 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
     ]
     median_time = statistics.median(elapsed) if elapsed else None
     sessions = db.list_sessions()
+    sync = db.latest_upstream_sync()
+    branch = settings.upstream_sync_branch
+    conflict_issue_number = db.get_meta(branch_meta_key("conflict_issue_number", branch))
+    changelog_pr_url = db.get_meta(branch_meta_key("changelog_pr_url", branch))
     return {
         "generated_at": _iso_timestamp(now),
         "mode": settings.mode.value,
@@ -86,6 +91,14 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "ceiling": budget.ceiling,
             "remaining": budget.remaining(),
             "consumed_metered": sum(session.acus_consumed for session in sessions),
+        },
+        "upstream_sync": {
+            "enabled": settings.upstream_sync_enabled,
+            "last_outcome": sync["outcome"] if sync else None,
+            "last_at": _iso_timestamp(sync["started_at"]) if sync else None,
+            "changelog_pr_url": changelog_pr_url,
+            "conflict_issue_number": int(conflict_issue_number) if conflict_issue_number else None,
+            "changelog_through_sha": db.get_meta(branch_meta_key("changelog_through_sha", branch)),
         },
         "sessions": [_session_detail(session) for session in sessions],
         "issues_detail": [_issue_detail(issue) for issue in issues],

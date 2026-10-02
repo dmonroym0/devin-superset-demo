@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
 
 from fastapi import FastAPI, Request
@@ -11,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.github_client import GitHubError
 from app.interfaces import Deps
+from app.request_security import is_allowed_local_request
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +50,7 @@ def register(app: FastAPI, deps: Deps) -> None:
 
     @app.post("/sweep")
     async def sweep_now(request: Request) -> JSONResponse:
-        if "x-forwarded-for" in request.headers or "forwarded" in request.headers:
-            return JSONResponse({"error": "forbidden"}, status_code=403)
-        if request.client is None:
-            return JSONResponse({"error": "forbidden"}, status_code=403)
-        try:
-            address = ipaddress.ip_address(request.client.host)
-            allowed = any(
-                address in ipaddress.ip_network(cidr, strict=False)
-                for cidr in deps.settings.sweep_allowed_cidrs
-            )
-        except ValueError:
-            allowed = False
-        if not allowed:
+        if not is_allowed_local_request(request, deps.settings.sweep_allowed_cidrs):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         result = await run_sweep(deps)
         return JSONResponse(result, status_code=502 if "error" in result else 200)

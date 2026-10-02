@@ -1,0 +1,55 @@
+{
+  "merge": {
+    "before_sha": "1111111111111111111111111111111111111111",
+    "after_sha": "2222222222222222222222222222222222222222",
+    "outcome": "merged",
+    "commits": [
+      {
+        "sha": "0000000000000000000000000000000000000001",
+        "subject": "feat!: remove deprecated database backend support"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000002",
+        "subject": "feat(chart): add enhanced query parsing"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000003",
+        "subject": "fix(api): handle empty result sets"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000004",
+        "subject": "perf(cache): reduce query planning overhead"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000005",
+        "subject": "chore(deps): bump apache-airflow-providers-postgres from 5.8.0 to 5.9.0"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000006",
+        "subject": "Merged PR 38497: update annotation handling",
+        "is_merge": true
+      },
+      {
+        "sha": "0000000000000000000000000000000000000007",
+        "subject": "Improve the shared metadata query planner"
+      },
+      {
+        "sha": "0000000000000000000000000000000000000008",
+        "subject": "feat: support [links](javascript:alert(1)) & <script>alert(1)</script>"
+      }
+    ],
+    "files": [
+      "requirements/base.txt",
+      "requirements/development.txt",
+      "superset/models/core.py",
+      "superset-frontend/package.json"
+    ]
+  },
+  "conflict": {
+    "before_sha": "3333333333333333333333333333333333333333",
+    "after_sha": "3333333333333333333333333333333333333333",
+    "outcome": "conflict",
+    "commits": [],
+    "files": []
+  }
+}

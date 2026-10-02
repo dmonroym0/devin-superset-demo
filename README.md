@@ -95,6 +95,10 @@ APP_MODE=live docker compose up --build
 | `SWEEP_INTERVAL_S` | no | 300 |
 | `SOFT_TIMEOUT_S` / `HARD_TIMEOUT_S` | no | 1800 / 5400 (nudge / escalate stuck sessions) |
 | `DEVIN_MODE_TRIAGE` / `DEVIN_MODE_FIX` | no | Unset = org default |
+| `UPSTREAM_SYNC_ENABLED` | no | Defaults to true in DEMO and false in LIVE |
+| `UPSTREAM_SYNC_INTERVAL_S` | no | Positive interval in seconds; default 86400 |
+| `UPSTREAM_SYNC_BRANCH` | no | Fork branch to sync and target changelog PRs against; default `master` |
+| `DEMO_UPSTREAM_SCENARIO` | DEMO only | `merge` (default) or `conflict` |
 
 The container runs `python -m app.preflight` before starting. Preflight prints only `set` / `missing` / `invalid` for each variable, never a value. It makes only read-only calls and exits non-zero on any failure, so a broken LIVE configuration never starts.
 
@@ -106,13 +110,26 @@ Use a **fine-grained personal access token** with access to `dmonroym0/superset`
 |---|---|---|
 | Issues | Read and write | read labeled issues, comment, label, close |
 | Metadata | Read | required by GitHub for every fine-grained token |
-| Contents | Read and write | **only** if the BONUS upstream sync is enabled |
+| Contents | Read and write | required when upstream sync is enabled to read and write the changelog |
+| Pull requests | Read and write | required when upstream sync is enabled to open changelog PRs |
 
 The service creates any missing `devin:*` labels (including `devin:fixplease`) at startup. It only acts on issues in `dmonroym0/superset`. Webhooks from any other repo, including this one, are ignored.
 
 ### Webhook (optional)
 
 In the fork, go to Settings → Webhooks and add the public URL of `/webhooks/github`. Use content type `application/json`, your secret, and the "Issues" event. Without a public URL, the sweep finds labeled issues every `SWEEP_INTERVAL_S` seconds.
+
+## BONUS: scheduled upstream sync
+
+When enabled, the service periodically calls GitHub's fork `merge-upstream` operation for `UPSTREAM_SYNC_BRANCH` (default `master`). A conflict creates a `devin:needs-human` issue with manual resolution steps; the service never resolves conflicts automatically. After a successful sync it builds `FORK_CHANGELOG.md` from the commit range and opens a changelog PR targeting that branch. It writes the changelog only to the PR's new branch and never pushes directly to the target branch.
+
+`UPSTREAM_SYNC_ENABLED` defaults to `true` in DEMO and `false` in LIVE. `UPSTREAM_SYNC_INTERVAL_S` defaults to 86400 and must be positive. In DEMO, `DEMO_UPSTREAM_SCENARIO=merge` (default) exercises a successful merge and changelog PR; `conflict` exercises conflict-issue creation. The board and `/metrics.json` show the last sync outcome, changelog PR, conflict issue, and changelog-through SHA.
+
+Run a sync manually from the local host:
+
+```bash
+curl -X POST http://127.0.0.1:8000/sync-upstream
+```
 
 ## Design decisions
 
@@ -149,6 +166,10 @@ Create-session fields sent: `prompt`, `title`, `tags` (`devin-superset-demo`, `i
 - The board has no auth. It's reachable only from the host (`127.0.0.1` publish). Don't expose it publicly.
 - `POST /sweep` is "local-only" by client IP: loopback plus the Docker bridge range, and only when no forwarding headers are present. Behind a reverse proxy, keep it unexposed.
 - DEMO outcomes are scripted. Issues #2–#4 mirror reality; #1 and #5 are made up for the demo.
+- Two unmerged changelog PRs can conflict on `FORK_CHANGELOG.md`.
+- The changelog range can include fork-only commits merged since the previous changelog.
+- The dependency list is flagged incomplete past GitHub's 300-file compare cap.
+- A LIVE sync against scratch repositories has not been run.
 
 ## Next steps (not built)
 
