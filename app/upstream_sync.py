@@ -235,6 +235,7 @@ async def run_upstream_sync(deps: Deps) -> dict:
             title=title,
             body=body,
         )
+        deps.db.set_meta(branch_meta_key("changelog_pr_url", branch), pr_url)
         deps.db.set_meta(through_key, after_sha)
         _clear_pending_changelog(deps, branch)
         _record(

@@ -79,6 +79,7 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
     sync = db.latest_upstream_sync()
     branch = settings.upstream_sync_branch
     conflict_issue_number = db.get_meta(branch_meta_key("conflict_issue_number", branch))
+    changelog_pr_url = db.get_meta(branch_meta_key("changelog_pr_url", branch))
     return {
         "generated_at": _iso_timestamp(now),
         "mode": settings.mode.value,
@@ -95,7 +96,7 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "enabled": settings.upstream_sync_enabled,
             "last_outcome": sync["outcome"] if sync else None,
             "last_at": _iso_timestamp(sync["started_at"]) if sync else None,
-            "changelog_pr_url": sync["pr_url"] if sync else None,
+            "changelog_pr_url": changelog_pr_url,
             "conflict_issue_number": int(conflict_issue_number) if conflict_issue_number else None,
             "changelog_through_sha": db.get_meta(branch_meta_key("changelog_through_sha", branch)),
         },

@@ -13,6 +13,7 @@ from app.fake_github import FakeGitHub
 from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.main import create_app
+from app.metrics import compute
 from app.models import LABEL_NEEDS_HUMAN, CompareResult, Issue, MergeUpstreamResult
 from app.upstream_sync import _pull_request_body, run_upstream_sync
 
@@ -85,6 +86,31 @@ async def test_second_upstream_sync_is_none_without_creating_another_pr(tmp_path
         assert result["outcome"] == "none"
         assert len(github.created_prs) == 1
         assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_changelog_pr_url_stays_visible_after_noop_sync_and_is_branch_scoped(tmp_path):
+    deps, _ = _deps(tmp_path)
+    try:
+        first = await run_upstream_sync(deps)
+        second = await run_upstream_sync(deps)
+
+        assert first["outcome"] == "merged"
+        assert second["outcome"] == "none"
+        upstream = compute(deps.db, deps.budget, deps.settings, deps.clock())["upstream_sync"]
+        assert upstream["last_outcome"] == "none"
+        assert upstream["changelog_pr_url"] == first["pr_url"]
+
+        deps.settings = replace(deps.settings, upstream_sync_branch="stable")
+        switched_branch = compute(
+            deps.db,
+            deps.budget,
+            deps.settings,
+            deps.clock(),
+        )["upstream_sync"]
+        assert switched_branch["changelog_pr_url"] is None
     finally:
         deps.db.close()
 
