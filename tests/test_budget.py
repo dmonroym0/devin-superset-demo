@@ -34,6 +34,22 @@ def test_cancel_frees_reserved_cap(tmp_path):
     db.close()
 
 
+def test_cancel_unattached_reservations_only_cancels_matching_issue_and_stage(tmp_path):
+    db, budget = make_budget(tmp_path)
+    assert budget.reserve(1, Stage.TRIAGE, 5, 100.0) is not None
+    triage_attached = budget.reserve(1, Stage.TRIAGE, 5, 100.0)
+    budget.attach(triage_attached, "triage-1")
+    budget.reserve(1, Stage.FIX, 15, 100.0)
+    budget.reserve(2, Stage.TRIAGE, 5, 100.0)
+
+    assert budget.committed() == 30
+    assert budget.cancel_unattached(1, Stage.TRIAGE) == 1
+    assert budget.committed() == 25
+    assert budget.cancel_unattached(1, Stage.TRIAGE) == 0
+
+    db.close()
+
+
 def test_default_stage_caps_are_five_and_fifteen(tmp_path):
     from app.config import Settings
 

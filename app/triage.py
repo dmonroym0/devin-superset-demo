@@ -59,6 +59,12 @@ def _evidence(item: Any) -> str:
 def parse_triage_output(structured_output: dict[str, Any] | None, issue_number: int) -> TriageResult:
     if not isinstance(structured_output, dict):
         raise TriageParseError("missing structured output")
+    if "issue_number" in structured_output:
+        other = structured_output["issue_number"]
+        if not isinstance(other, int) or isinstance(other, bool):
+            raise TriageParseError("triage output has invalid issue_number")
+        if other != issue_number:
+            raise TriageParseError(f"triage output is for issue #{other}, expected #{issue_number}")
     raw_cves = structured_output.get("cves")
     if not isinstance(raw_cves, list) or not raw_cves:
         raise TriageParseError("structured output has no cves")
@@ -196,6 +202,15 @@ async def check_triage(deps: Deps, session_row: SessionRow, actions: IssueAction
                 "apply_route",
                 actions.apply_route(deps, number, decision, None, rejected_pr_urls=info.pr_urls),
             )
+        await archive_triage(deps, session_row)
+        return
+
+    if info.status == "suspended":
+        reason = f"triage session suspended ({info.status_detail or 'no detail'})"
+        db.update_session(session_row.session_id, settled_at=now)
+        if db.transition(number, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, now, route_reason=reason):
+            db.add_event(number, "triage_suspended", reason, now)
+            await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
         await archive_triage(deps, session_row)
         return
 

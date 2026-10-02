@@ -7,8 +7,10 @@ import logging
 from collections.abc import Awaitable, Sequence
 from typing import Protocol
 
+import httpx
 from fastapi import FastAPI
 
+from app.devin_client import DevinError
 from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
 from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
@@ -42,10 +44,18 @@ class IssueActions(Protocol):
     async def clear_queued_budget(self, deps: Deps, number: int) -> None: ...
 
 
-async def _guard(deps: Deps, number: int, step: Awaitable[None]) -> None:
+async def _guard(deps: Deps, number: int, step: Awaitable[None], *, transient_ok: bool = False) -> None:
     try:
         await step
     except Exception as exc:  # noqa: BLE001
+        if transient_ok and isinstance(exc, (DevinError, httpx.HTTPError)):
+            status_code = getattr(exc, "status_code", None)
+            if status_code is None and isinstance(exc, httpx.HTTPStatusError):
+                status_code = exc.response.status_code
+            detail = f"{type(exc).__name__}{f' {status_code}' if status_code else ''}"
+            logger.warning("transient Devin poll failed for #%s: %s", number, detail)
+            deps.db.add_event(number, "devin_poll_failed", detail, deps.clock())
+            return
         error = f"{type(exc).__name__}: {str(exc)[:200]}"
         logger.warning("pipeline step failed for #%s: %s", number, type(exc).__name__)
         now = deps.clock()
@@ -60,13 +70,34 @@ async def tick(deps: Deps, actions: IssueActions) -> None:
     for session in db.list_sessions(stage=Stage.TRIAGE, active_only=True):
         issue = db.get_issue(session.issue_number)
         if issue is not None and issue.state is IssueState.TRIAGING:
-            await _guard(deps, session.issue_number, check_triage(deps, session, actions))
+            await _guard(deps, session.issue_number, check_triage(deps, session, actions), transient_ok=True)
     for row in db.list_issues([IssueState.TRIAGED]):
         await _guard(deps, row.number, route_triaged(deps, row, actions))
     for session in db.list_sessions(stage=Stage.FIX, active_only=True):
         issue = db.get_issue(session.issue_number)
         if issue is not None and issue.state is IssueState.FIXING:
-            await _guard(deps, session.issue_number, check_fix(deps, session, actions))
+            await _guard(deps, session.issue_number, check_fix(deps, session, actions), transient_ok=True)
+
+
+def _recover_claims_after_restart(deps: Deps) -> None:
+    recoveries = (
+        (IssueState.TRIAGING, Stage.TRIAGE, IssueState.SEEN),
+        (IssueState.FIXING, Stage.FIX, IssueState.TRIAGED),
+    )
+    for claimed_state, stage, target_state in recoveries:
+        for issue in deps.db.list_issues([claimed_state]):
+            active_sessions = deps.db.list_sessions(stage=stage, issue_number=issue.number, active_only=True)
+            if active_sessions:
+                continue
+            cancelled = deps.budget.cancel_unattached(issue.number, stage)
+            now = deps.clock()
+            if deps.db.transition(issue.number, [claimed_state], target_state, now):
+                detail = (
+                    f"{claimed_state.value} -> {target_state.value}; cancelled {cancelled} "
+                    f"unattached {stage.value} reservation(s)"
+                )
+                deps.db.add_event(issue.number, "recovered_after_restart", detail, now)
+                logger.info("recovered issue #%s after restart: %s", issue.number, detail)
 
 
 def register(app: FastAPI, deps: Deps, actions: IssueActions | None = None) -> None:
@@ -82,6 +113,7 @@ def register(app: FastAPI, deps: Deps, actions: IssueActions | None = None) -> N
         logger.info(
             "Playbooks resolved: triage=%s fix=%s", deps.playbooks.triage.title, deps.playbooks.fix.title
         )
+        _recover_claims_after_restart(deps)
 
     async def worker() -> None:
         while True:

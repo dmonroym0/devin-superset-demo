@@ -5,8 +5,12 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import SessionRow
+from app.fake_devin import FakeDevin as ScenarioFakeDevin
+from app.fake_github import FakeGitHub as SeededFakeGitHub
 from app.main import create_app
-from app.models import MANAGED_LABELS
+from app.models import MANAGED_LABELS, IssueState, Stage
+from app.pipeline import tick
 from app.playbooks import SchemaMismatch
 
 
@@ -90,3 +94,91 @@ def test_demo_startup_rejects_triage_schema_mismatch(fake_github, fake_devin, te
         TestClient(app),
     ):
         pass
+
+
+def _recovery_app(test_settings):
+    github = SeededFakeGitHub.from_seed()
+    devin = ScenarioFakeDevin.from_scenarios()
+    app = create_app(test_settings, github=github, devin=devin, clock=lambda: 100.0)
+    app.state.deps.background.clear()
+    return app, github, devin
+
+
+async def test_startup_recovers_triaging_issue_and_reprocesses_it(
+    test_settings,
+):
+    app, github, devin = _recovery_app(test_settings)
+    deps = app.state.deps
+    deps.db.init_schema()
+    deps.db.upsert_seen_issue(github.issues[2], deps.clock())
+    assert deps.db.transition(2, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
+    pre_reservation = deps.budget.committed()
+    assert deps.budget.reserve(2, Stage.TRIAGE, 5, deps.clock()) is not None
+    assert deps.budget.committed() == pre_reservation + 5
+
+    with TestClient(app, client=("127.0.0.1", 50000)):
+        assert deps.db.get_issue(2).state is IssueState.SEEN
+        assert deps.budget.committed() == pre_reservation
+        recovered = [event for event in deps.db.list_events(2) if event.kind == "recovered_after_restart"]
+        assert len(recovered) == 1
+
+        for _ in range(8):
+            await tick(deps, app.state.issue_actions)
+
+        assert deps.db.get_issue(2).state is IssueState.NOT_REACHABLE
+        triage_requests = [
+            request
+            for request in devin.requests
+            if "issue-2" in request.tags and "stage-triage" in request.tags
+        ]
+        assert len(triage_requests) == 1
+        assert (
+            len([event for event in deps.db.list_events(2) if event.kind == "recovered_after_restart"]) == 1
+        )
+
+
+async def test_startup_recovers_fixing_issue_to_triaged(test_settings):
+    app, github, _ = _recovery_app(test_settings)
+    deps = app.state.deps
+    deps.db.init_schema()
+    deps.db.upsert_seen_issue(github.issues[3], deps.clock())
+    assert deps.db.transition(3, [IssueState.SEEN], IssueState.FIXING, deps.clock())
+    assert deps.budget.reserve(3, Stage.FIX, 15, deps.clock()) is not None
+
+    with TestClient(app, client=("127.0.0.1", 50000)):
+        assert deps.db.get_issue(3).state is IssueState.TRIAGED
+        assert deps.budget.committed() == 0
+        recovered = [event for event in deps.db.list_events(3) if event.kind == "recovered_after_restart"]
+        assert len(recovered) == 1
+
+
+async def test_startup_preserves_triaging_issue_with_active_session(test_settings):
+    app, github, _ = _recovery_app(test_settings)
+    deps = app.state.deps
+    deps.db.init_schema()
+    deps.db.upsert_seen_issue(github.issues[2], deps.clock())
+    assert deps.db.transition(2, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
+    reservation = deps.budget.reserve(2, Stage.TRIAGE, 5, deps.clock())
+    assert reservation is not None
+    assert deps.budget.attach(reservation, "active-triage-2")
+    deps.db.insert_session(
+        SessionRow(
+            session_id="active-triage-2",
+            issue_number=2,
+            stage=Stage.TRIAGE,
+            status="running",
+            status_detail="working",
+            devin_mode=None,
+            max_acu_limit=5,
+            acus_consumed=0.0,
+            url=None,
+            created_at=deps.clock(),
+            updated_at=deps.clock(),
+        )
+    )
+
+    with TestClient(app, client=("127.0.0.1", 50000)):
+        assert deps.db.get_issue(2).state is IssueState.TRIAGING
+        assert deps.db.get_session("active-triage-2").settled_at is None
+        assert deps.budget.committed() == 5
+        assert not [event for event in deps.db.list_events(2) if event.kind == "recovered_after_restart"]

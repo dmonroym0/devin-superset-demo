@@ -109,6 +109,62 @@ def test_webhook_streams_oversized_chunked_payload(tmp_path, fake_devin):
     assert response.json() == {"error": "payload too large"}
 
 
+def test_chunked_oversized_webhook_is_rejected(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+
+    def body_chunks():
+        for _ in range(18):
+            yield b"x" * (64 * 1024)
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post(
+            "/webhooks/github",
+            content=body_chunks(),
+            headers={"content-type": "application/json"},
+        )
+
+    assert response.status_code == 413
+    assert response.json() == {"error": "payload too large"}
+
+
+async def test_chunked_oversized_webhook_stops_reading_at_limit(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    chunks_read = 0
+    response_messages = []
+
+    async def receive():
+        nonlocal chunks_read
+        chunks_read += 1
+        return {
+            "type": "http.request",
+            "body": b"x" * (64 * 1024),
+            "more_body": chunks_read < 18,
+        }
+
+    async def send(message):
+        response_messages.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/webhooks/github",
+        "raw_path": b"/webhooks/github",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"content-type", b"application/json")],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+
+    await app(scope, receive, send)
+
+    assert response_messages[0]["status"] == 413
+    assert chunks_read == 17
+
+
 def test_webhook_ignores_other_events_labels_repositories_and_pull_requests(tmp_path, fake_devin):
     app = _app(tmp_path, fake_devin)
     with TestClient(app, client=("127.0.0.1", 50000)) as client:

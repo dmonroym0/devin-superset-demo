@@ -8,6 +8,7 @@ from app import issue_actions
 from app.budget import Budget
 from app.config import Settings
 from app.db import Database
+from app.devin_client import DevinError
 from app.fake_devin import FakeDevin
 from app.fake_github import FakeGitHub
 from app.github_client import GitHubError
@@ -156,6 +157,32 @@ async def test_seeded_scenarios_end_states_and_archiving(tmp_path):
     assert not fix_ids & set(devin.archived)
     assert all(row.archived for row in deps.db.list_sessions(stage=Stage.TRIAGE))
     assert deps.db.get_issue(3).package and deps.db.get_issue(3).bump_kind is not None
+
+
+async def test_transient_poll_error_retries_without_moving_issue_to_error(tmp_path):
+    devin = FakeDevin.from_scenarios()
+    get_session = devin.get_session
+    calls = 0
+
+    async def fail_once(session_id):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DevinError(503, "GET", f"/sessions/{session_id}")
+        return await get_session(session_id)
+
+    devin.get_session = fail_once
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    await run_ticks(deps, actions, ticks=8)
+
+    assert state(deps, 2) is IssueState.NOT_REACHABLE
+    assert deps.db.get_issue(2).last_error is None
+    events = [event for event in deps.db.list_events(2) if event.kind == "devin_poll_failed"]
+    assert len(events) == 1
+    assert events[0].detail == "DevinError 503"
 
 
 async def test_every_create_request_has_caps_tags_schema_and_repo(tmp_path):

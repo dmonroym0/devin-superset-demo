@@ -112,17 +112,19 @@ class HttpDevinClient:
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        retry_statuses: frozenset[int] = RETRY_STATUSES,
+        retry_transport: bool = True,
     ) -> dict[str, Any]:
         url = f"{self._org_path}{path}"
         for attempt in range(2):
             try:
                 response = await self._http.request(method, url, json=json, params=params)
             except httpx.TransportError:
-                if attempt == 0:
+                if retry_transport and attempt == 0:
                     await asyncio.sleep(self._backoff)
                     continue
                 raise DevinError(0, method, url) from None
-            if response.status_code in RETRY_STATUSES and attempt == 0:
+            if response.status_code in retry_statuses and attempt == 0:
                 await asyncio.sleep(self._backoff)
                 continue
             if response.status_code >= 400:
@@ -159,7 +161,15 @@ class HttpDevinClient:
         return playbook_from_payload(await self._request("POST", "/playbooks", json=payload))
 
     async def create_session(self, request: SessionRequest) -> SessionInfo:
-        return session_from_payload(await self._request("POST", "/sessions", json=request.to_payload()))
+        return session_from_payload(
+            await self._request(
+                "POST",
+                "/sessions",
+                json=request.to_payload(),
+                retry_statuses=frozenset({429}),
+                retry_transport=False,
+            )
+        )
 
     async def get_session(self, session_id: str) -> SessionInfo:
         return session_from_payload(await self._request("GET", f"/sessions/{session_id}"))

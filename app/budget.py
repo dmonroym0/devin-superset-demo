@@ -59,6 +59,16 @@ class Budget:
             self._db._connection.commit()
             return cursor.rowcount == 1
 
+    def cancel_unattached(self, issue_number: int, stage: Stage) -> int:
+        with self._db._lock:
+            cursor = self._db._connection.execute(
+                "UPDATE ledger SET cancelled=1 "
+                "WHERE issue_number=? AND stage=? AND session_id IS NULL AND cancelled=0",
+                (issue_number, stage.value),
+            )
+            self._db._connection.commit()
+            return cursor.rowcount
+
     def committed(self) -> int:
         with self._db._lock:
             row = self._db._connection.execute(

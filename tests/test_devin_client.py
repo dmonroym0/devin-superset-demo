@@ -123,6 +123,56 @@ async def test_retries_once_on_retryable_status(respx_mock):
 
 
 @respx.mock(base_url=BASE)
+async def test_create_session_does_not_retry_5xx(respx_mock):
+    route = respx_mock.post(f"{ORG}/sessions").mock(return_value=httpx.Response(503))
+    devin = client()
+
+    with pytest.raises(DevinError) as info:
+        await devin.create_session(SessionRequest("p", "t", "pb", 5))
+
+    assert info.value.status_code == 503
+    assert route.call_count == 1
+    await devin.aclose()
+
+
+@respx.mock(base_url=BASE)
+async def test_create_session_retries_once_on_429(respx_mock):
+    route = respx_mock.post(f"{ORG}/sessions").mock(
+        side_effect=[httpx.Response(429), httpx.Response(200, json=SESSION)]
+    )
+    devin = client()
+
+    assert (await devin.create_session(SessionRequest("p", "t", "pb", 5))).session_id == "devin-1"
+    assert route.call_count == 2
+    await devin.aclose()
+
+
+@respx.mock(base_url=BASE)
+async def test_create_session_does_not_retry_transport_error(respx_mock):
+    route = respx_mock.post(f"{ORG}/sessions").mock(side_effect=httpx.ConnectError("offline"))
+    devin = client()
+
+    with pytest.raises(DevinError) as info:
+        await devin.create_session(SessionRequest("p", "t", "pb", 5))
+
+    assert info.value.status_code == 0
+    assert route.call_count == 1
+    await devin.aclose()
+
+
+@respx.mock(base_url=BASE)
+async def test_get_session_still_retries_503(respx_mock):
+    route = respx_mock.get(f"{ORG}/sessions/devin-1").mock(
+        side_effect=[httpx.Response(503), httpx.Response(200, json=SESSION)]
+    )
+    devin = client()
+
+    assert (await devin.get_session("devin-1")).session_id == "devin-1"
+    assert route.call_count == 2
+    await devin.aclose()
+
+
+@respx.mock(base_url=BASE)
 async def test_second_failure_raises(respx_mock):
     route = respx_mock.get(f"{ORG}/sessions/devin-1").mock(return_value=httpx.Response(503))
     with pytest.raises(DevinError) as info:
