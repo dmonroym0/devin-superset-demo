@@ -75,7 +75,7 @@ python -m app.preflight && python -m app
 pytest -q
 ```
 
-SQLite defaults to `{DATA_DIR}/forkfix-{APP_MODE}.db` (`DATA_DIR` defaults to `data`; Docker uses `/data`). Set `DB_PATH` to override the exact file. Each database records its owning mode and refuses startup if reused by the other mode; choose a separate `DATA_DIR` or `DB_PATH` when switching between DEMO and LIVE.
+SQLite defaults to `{DATA_DIR}/forkfix-{APP_MODE}.db` (`DATA_DIR` defaults to `data`; Docker uses `/data`). Set `DB_PATH` to override the exact file. Each database records its owning mode and refuses startup if reused by the other mode or if an unmarked legacy database already contains issues, ledger entries, or sessions; use a fresh `DATA_DIR` or `DB_PATH` for unmarked data.
 
 ## LIVE mode
 

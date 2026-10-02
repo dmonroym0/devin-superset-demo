@@ -1,9 +1,11 @@
 import re
 
 from app.models import (
+    BumpKind,
     Confidence,
     CveFinding,
     Issue,
+    IssueFacts,
     Playbook,
     RouteAction,
     RouteDecision,
@@ -11,6 +13,7 @@ from app.models import (
     Verdict,
 )
 from app.prompts import build_fix_prompt, build_triage_prompt
+from app.router import route
 
 TRIAGE = Playbook("pb-t", "CVE Reachability Triage (Read-Only)", "!cve_triage", {"type": "object"})
 FIX = Playbook("pb-f", "Dependency Security Fix (superset)", "!dep_security_fix", None)
@@ -83,3 +86,25 @@ def test_fix_prompt_contents():
     table = fenced(prompt, "untrusted_triage_output")
     assert "| CVE-2026-1 | REACHABLE | high |" in table
     assert "untrusted_triage_output" not in table
+
+
+def test_fix_prompt_excludes_unlisted_cves_from_triage_output():
+    issue = Issue(
+        7,
+        "Upgrade foo",
+        "Package: foo\nCurrent -> fixed: 1.0.0 -> 1.1.0\nCVEs: CVE-2026-1111\n",
+    )
+    result = TriageResult(
+        7,
+        (
+            CveFinding("CVE-2026-1111", Verdict.REACHABLE, Confidence.HIGH),
+            CveFinding("CVE-2026-9999", Verdict.REACHABLE, Confidence.HIGH),
+        ),
+    )
+    facts = IssueFacts("foo", "1.0.0", "1.1.0", BumpKind.MINOR, ("CVE-2026-1111",))
+    decision = route(facts, result)
+
+    assert decision.action is RouteAction.FIX
+    prompt = build_fix_prompt(issue, FIX, result, decision)
+    assert "CVE-2026-1111" in prompt
+    assert "CVE-2026-9999" not in prompt

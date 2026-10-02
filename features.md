@@ -8,7 +8,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
 | Plan | built | docs/PLAN.md | read it | A–K |
-| Config + DEMO/LIVE database isolation | verified | app/config.py, app/db.py, app/main.py | `python -m pytest tests/test_main.py::test_demo_and_live_use_distinct_databases_in_same_data_dir tests/test_main.py::test_startup_rejects_database_claimed_by_another_mode` | R6, R13 |
+| Config + DEMO/LIVE database isolation | verified | app/config.py, app/db.py, app/main.py | `python -m pytest tests/test_main.py::test_demo_and_live_use_distinct_databases_in_same_data_dir tests/test_main.py::test_startup_rejects_database_claimed_by_another_mode tests/test_db.py::test_claim_mode_rejects_legacy_database_with_issue_data tests/test_db.py::test_claim_mode_stamps_empty_database_and_allows_same_mode_with_data` | R6, R13 |
 | SQLite state machine + delivery dedupe store | verified | app/db.py, app/models.py | `pytest tests/test_db.py`; `pytest tests/test_e2e_demo.py` | R1, R7 |
 | Atomic session settlement + issue transition | verified | app/db.py, app/fix.py, app/triage.py, app/escalation.py | `python -m pytest tests/test_fix.py::test_failed_atomic_pr_transition_keeps_fix_session_active_for_retry` | R7 |
 | ACU ledger (caps 5/15, ceiling 120 across all issues) | verified | app/budget.py | `pytest tests/test_budget.py`; `pytest tests/test_e2e_demo.py` | R6, B |
@@ -22,7 +22,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
-| Webhook intake (HMAC, redelivery dedupe, fork-only) | verified | app/webhook.py | `pytest tests/test_webhook.py`; `pytest tests/test_e2e_demo.py` | R1, Q6 |
+| Webhook intake (HMAC, redelivery dedupe, fork-only) | verified | app/webhook.py, app/fake_github.py | `pytest tests/test_webhook.py`; `pytest tests/test_webhook.py::test_demo_webhook_keeps_existing_closed_issue_state`; `pytest tests/test_webhook.py::test_demo_webhook_adds_trigger_label_to_unknown_issue`; `pytest tests/test_e2e_demo.py` | R1, Q6 |
 | Periodic sweep + local POST /sweep | verified | app/sweep.py | `curl -X POST localhost:8000/sweep`; `pytest tests/test_e2e_demo.py` | R1, Q4 |
 | GitHub client + seeded fake | verified | app/github_client.py, app/fake_github.py | `pytest tests/test_github_client.py`; `pytest tests/test_e2e_demo.py` | R13, G |
 | URL destination allowlist + Markdown escaping | verified | app/issue_actions.py, app/dashboard.py | `python -m pytest tests/test_issue_actions.py::test_triage_comment_omits_unsafe_urls tests/test_issue_actions.py::test_triage_comment_renders_allowlisted_fork_links tests/test_issue_actions.py::test_triage_comment_escapes_markdown_model_text tests/test_dashboard.py::test_dashboard_renders_database_rows_safely` | R3, F1 |
@@ -37,7 +37,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 | Playbook resolution by title + overrides + schema from GET playbook | verified | app/playbooks.py | `pytest tests/test_playbooks.py`; `pytest tests/test_e2e_demo.py` | R5, E |
 | Triage with read-only PR rejection and cancellation re-check | verified | app/triage.py, app/fix.py, app/models.py, app/db.py, app/metrics.py, app/templates/board.html, app/webhook.py | `python -m pytest tests/test_triage.py::test_closed_queued_triage_issue_is_cancelled_before_session tests/test_triage.py::test_queued_triage_issue_without_trigger_label_is_cancelled tests/test_fix.py::test_fix_without_trigger_label_is_cancelled_before_session tests/test_webhook.py::test_relabelled_cancelled_issue_is_revived_by_webhook` | R2, R4 |
 | Prompt fencing + reachability-evidence-standards skill | built | app/prompts.py | `pytest tests/test_prompts.py` | R11, F |
-| Router (per issue, issue-CVE allowlist) | verified | app/router.py, app/models.py, app/issue_actions.py | `python -m pytest tests/test_router.py::test_unlisted_reachable_cve_does_not_route_to_fix tests/test_router.py::test_only_issue_listed_cves_can_qualify tests/test_router.py::test_issue_without_cve_ids_requires_human_review` | R1, R3, C |
+| Router (per issue, issue-CVE allowlist) | verified | app/router.py, app/models.py, app/issue_actions.py, app/prompts.py | `python -m pytest tests/test_router.py::test_unlisted_reachable_cve_does_not_route_to_fix tests/test_router.py::test_only_issue_listed_cves_can_qualify tests/test_router.py::test_issue_without_cve_ids_requires_human_review tests/test_prompts.py::test_fix_prompt_excludes_unlisted_cves_from_triage_output` | R1, R3, C |
 | Fix session, "PR opened", never archived | verified | app/fix.py | `pytest tests/test_fix.py`; `pytest tests/test_e2e_demo.py` | R4, D |
 | Ambiguous session-create accounting + restart recovery | verified | app/triage.py, app/fix.py, app/budget.py, app/db.py, app/pipeline.py | `python -m pytest tests/test_triage.py::test_ambiguous_triage_create_keeps_reservation_and_does_not_retry tests/test_fix.py::test_ambiguous_fix_create_keeps_reservation_and_does_not_retry tests/test_pipeline.py::test_restart_preserves_ambiguous_unattached_reservation` | R5 |
 | Fix-budget retry preserves TRIAGED state | verified | app/fix.py, README.md, docs/PLAN.md | `python -m pytest tests/test_fix.py::test_fix_budget_refusal_keeps_triaged` | F3 |

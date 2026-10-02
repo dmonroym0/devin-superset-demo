@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from dataclasses import replace
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -135,14 +134,9 @@ def register(app: FastAPI, deps: Deps) -> None:
         if not is_new_delivery:
             return duplicate_response()
         if deps.settings.mode is Mode.DEMO:
-            add_issue = getattr(deps.github, "add_issue", None)
-            if callable(add_issue):
-                add_issue(
-                    replace(
-                        issue,
-                        labels=tuple(dict.fromkeys((*issue.labels, deps.settings.trigger_label))),
-                    )
-                )
+            ensure_issue_labeled = getattr(deps.github, "ensure_issue_labeled", None)
+            if callable(ensure_issue_labeled):
+                ensure_issue_labeled(issue, deps.settings.trigger_label)
         deps.wake.set()
         return JSONResponse(
             {"status": "accepted", "issue": issue_number, "new": is_new_issue},

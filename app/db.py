@@ -187,6 +187,15 @@ class Database:
         with self._lock:
             row = self._connection.execute("SELECT value FROM meta WHERE key='mode'").fetchone()
             if row is None:
+                has_data = self._connection.execute(
+                    "SELECT EXISTS (SELECT 1 FROM issues) OR EXISTS (SELECT 1 FROM ledger) "
+                    "OR EXISTS (SELECT 1 FROM sessions)"
+                ).fetchone()[0]
+                if has_data:
+                    raise DatabaseModeMismatch(
+                        f"database {self.path} has data but no mode marker; refusing to start in {mode}; "
+                        "use a fresh DB_PATH/DATA_DIR"
+                    )
                 self._connection.execute("INSERT INTO meta(key, value) VALUES ('mode', ?)", (mode,))
                 self._connection.commit()
                 return

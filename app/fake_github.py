@@ -62,6 +62,15 @@ class FakeGitHub:
         self.issues[issue.number] = issue
         self.existing_labels.update(issue.labels)
 
+    def ensure_issue_labeled(self, issue: Issue, label: str) -> None:
+        existing = self.issues.get(issue.number)
+        if existing is None:
+            labels = tuple(dict.fromkeys((*issue.labels, label)))
+            self.issues[issue.number] = replace(issue, labels=labels)
+        elif label not in existing.labels:
+            self.issues[issue.number] = replace(existing, labels=(*existing.labels, label))
+        self.existing_labels.update(self.issues[issue.number].labels)
+
     def _get_issue(self, number: int, method: str, path: str) -> Issue:
         try:
             return self.issues[number]

@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app.db import Database
+from app.db import Database, DatabaseModeMismatch
 from app.models import Issue, IssueState
 
 
@@ -69,6 +69,35 @@ def test_init_schema_migrates_create_started_column(tmp_path):
     assert "create_started_at" in columns
 
     db.close()
+
+
+@pytest.mark.parametrize("mode", ["live", "demo"])
+def test_claim_mode_rejects_legacy_database_with_issue_data(tmp_path, mode):
+    path = str(tmp_path / f"legacy-{mode}.db")
+    db = Database(path)
+    db.init_schema()
+    db.upsert_seen_issue(Issue(number=1, title="Legacy", body=""), 100.0)
+    db.close()
+
+    restarted = Database(path)
+    with pytest.raises(DatabaseModeMismatch, match="has data but no mode marker"):
+        restarted.claim_mode(mode)
+    restarted.close()
+
+
+def test_claim_mode_stamps_empty_database_and_allows_same_mode_with_data(tmp_path):
+    path = str(tmp_path / "mode.db")
+    db = Database(path)
+    db.init_schema()
+    db.claim_mode("demo")
+    db.upsert_seen_issue(Issue(number=1, title="Issue", body=""), 100.0)
+    db.close()
+
+    restarted = Database(path)
+    restarted.init_schema()
+    restarted.claim_mode("demo")
+    assert restarted.get_issue(1).title == "Issue"
+    restarted.close()
 
 
 def test_transition_is_compare_and_set(tmp_path):
