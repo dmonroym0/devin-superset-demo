@@ -61,7 +61,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
 | E2E DEMO run (startup, webhooks, budget, routing, modes) | verified | tests/test_e2e_demo.py | `pytest tests/test_e2e_demo.py` | R15 |
-| README (diagram, run, simulate, PAT perms, decisions, limits, Automation appendix, next steps) | planned | README.md | read it | R15, I, Q1 |
+| README (diagram, run, simulate, PAT perms, decisions, limits, Automation appendix, next steps) | built | README.md | read it | R15, I, Q1 |
 
 ## BONUS (only on explicit go)
 
@@ -89,3 +89,9 @@ Requirement IDs: UI1–UI5 are the five telemetry views, UI6 design system, UI7 
 | EN/ES catalogs, Accept-Language default, cookie, `<html lang>`, locale formatting | verified | app/i18n/, app/templates/base.html | `pytest tests/test_i18n.py`; click EN / ES in the header | UI11 |
 | Spanish README + glossary | built | README.es.md, docs/es/GLOSSARY.md | read them | UI11 |
 | DeepWiki config with experimental Spanish section | built | .devin/wiki.json | regenerate the wiki and check the "Documentación en español" pages | UI12 |
+
+## Release checks
+
+| Name | Status | Files | How to see it | Requirement |
+|---|---|---|---|---|
+| features.md commands collect from a plain `pytest` run; no `planned` row for shipped files | verified | pyproject.toml, tests/test_features_md.py | `pytest tests/test_features_md.py`; `pytest tests/test_e2e_demo.py` | R10, F |
