@@ -124,6 +124,7 @@ class UpstreamCommit:
 class CompareResult:
     commits: tuple[UpstreamCommit, ...]
     files: tuple[str, ...]
+    files_truncated: bool = False
 
 
 @dataclass(frozen=True)

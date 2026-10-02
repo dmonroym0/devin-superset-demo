@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,8 +13,8 @@ from app.fake_github import FakeGitHub
 from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.main import create_app
-from app.models import LABEL_NEEDS_HUMAN, Issue, MergeUpstreamResult
-from app.upstream_sync import run_upstream_sync
+from app.models import LABEL_NEEDS_HUMAN, CompareResult, Issue, MergeUpstreamResult
+from app.upstream_sync import _pull_request_body, run_upstream_sync
 
 
 def _deps(tmp_path, *, scenario="merge"):
@@ -68,7 +69,7 @@ async def test_upstream_merge_creates_changelog_pr_and_advances_sha(tmp_path):
         assert github.created_prs[0]["base_branch"] == "master"
         assert "# Fork changelog" in github.created_prs[0]["content"]
         assert "never pushed directly to `master`" in github.created_prs[0]["body"]
-        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
         assert deps.db.latest_upstream_sync()["pr_url"] == result["pr_url"]
     finally:
         deps.db.close()
@@ -83,7 +84,7 @@ async def test_second_upstream_sync_is_none_without_creating_another_pr(tmp_path
 
         assert result["outcome"] == "none"
         assert len(github.created_prs) == 1
-        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
     finally:
         deps.db.close()
 
@@ -103,7 +104,7 @@ async def test_conflict_creates_one_issue_while_existing_issue_is_open(tmp_path)
         assert "dmonroym0/superset" in body
         assert "git fetch upstream" in body
         assert "never auto-resolves" in body
-        assert deps.db.get_meta("conflict_issue_number") == str(first["issue_number"])
+        assert deps.db.get_meta("conflict_issue_number:master") == str(first["issue_number"])
         assert deps.db.latest_upstream_sync()["detail"] == f"existing issue #{first['issue_number']}"
     finally:
         deps.db.close()
@@ -145,7 +146,7 @@ async def test_conflict_reuses_open_matching_issue_from_github(tmp_path):
 
         assert result == {"outcome": "conflict", "issue_number": 81}
         assert github.created_issues == []
-        assert deps.db.get_meta("conflict_issue_number") == "81"
+        assert deps.db.get_meta("conflict_issue_number:master") == "81"
     finally:
         deps.db.close()
 
@@ -167,12 +168,12 @@ async def test_changelog_pr_failure_does_not_advance_sha_and_retries(tmp_path):
     try:
         first = await run_upstream_sync(deps)
         assert first["outcome"] == "error"
-        assert deps.db.get_meta("changelog_through_sha") is None
+        assert deps.db.get_meta("changelog_through_sha:master") is None
         assert deps.db.latest_upstream_sync()["detail"] == "GitHub status 503"
 
         second = await run_upstream_sync(deps)
         assert second["outcome"] == "merged"
-        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
         assert len(github.created_prs) == 1
     finally:
         deps.db.close()
@@ -197,13 +198,151 @@ async def test_repeated_changelog_pr_failures_keep_original_range_for_retry(tmp_
         second = await run_upstream_sync(deps)
         assert first["outcome"] == "error"
         assert second["outcome"] == "error"
-        assert deps.db.get_meta("changelog_through_sha") is None
+        assert deps.db.get_meta("changelog_through_sha:master") is None
 
         third = await run_upstream_sync(deps)
         assert third["outcome"] == "merged"
         assert third["pr_url"] == "https://github.com/dmonroym0/superset/pull/900"
-        assert deps.db.get_meta("changelog_through_sha") == "2" * 40
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
         assert len(github.created_prs) == 1
+    finally:
+        deps.db.close()
+
+
+def test_pull_request_body_flags_incomplete_dependency_file_list():
+    body = _pull_request_body(
+        (),
+        ("requirements/base.txt",),
+        "master",
+        files_truncated=True,
+    )
+
+    assert "_Dependency list may be incomplete: GitHub compare returned its 300-file cap._" in body
+
+
+@pytest.mark.asyncio
+async def test_upstream_cursor_is_scoped_to_configured_branch(tmp_path):
+    deps, github = _deps(tmp_path)
+    stable_before = "3" * 40
+    stable_after = "4" * 40
+    sha_calls = 0
+    comparisons = []
+
+    async def stable_branch_sha(branch):
+        nonlocal sha_calls
+        assert branch == "stable"
+        sha_calls += 1
+        return stable_before if sha_calls == 1 else stable_after
+
+    async def no_stable_merge(branch):
+        assert branch == "stable"
+        return MergeUpstreamResult("none", "Already up to date")
+
+    async def stable_compare(base, head):
+        comparisons.append((base, head))
+        return CompareResult((), ())
+
+    try:
+        master_result = await run_upstream_sync(deps)
+        assert master_result["outcome"] == "merged"
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
+
+        deps.settings = replace(deps.settings, upstream_sync_branch="stable")
+        github.get_branch_sha = stable_branch_sha
+        github.merge_upstream = no_stable_merge
+        github.compare = stable_compare
+
+        stable_result = await run_upstream_sync(deps)
+
+        assert stable_result["outcome"] == "none"
+        assert comparisons == [(stable_before, stable_after)]
+        assert deps.db.get_meta("changelog_through_sha:stable") == stable_after
+        assert deps.db.get_meta("changelog_through_sha:master") == "2" * 40
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_pending_changelog_state_is_scoped_to_branch(tmp_path):
+    deps, github = _deps(tmp_path)
+    original_create = github.create_changelog_pr
+    stable_before = "3" * 40
+    stable_after = "4" * 40
+    sha_calls = 0
+    comparisons = []
+
+    async def fail_master_pr(*args, **kwargs):
+        raise GitHubError(503, "POST", "/repos/dmonroym0/superset/pulls")
+
+    async def stable_branch_sha(branch):
+        nonlocal sha_calls
+        assert branch == "stable"
+        sha_calls += 1
+        return stable_before if sha_calls == 1 else stable_after
+
+    async def no_stable_merge(branch):
+        assert branch == "stable"
+        return MergeUpstreamResult("none", "Already up to date")
+
+    async def stable_compare(base, head):
+        comparisons.append((base, head))
+        return CompareResult((), ())
+
+    github.create_changelog_pr = fail_master_pr
+    try:
+        master_result = await run_upstream_sync(deps)
+        assert master_result["outcome"] == "error"
+        assert deps.db.get_meta("changelog_pending_base_sha:master") == "1" * 40
+        assert deps.db.get_meta("changelog_pending_outcome:master") == "merged"
+
+        deps.settings = replace(deps.settings, upstream_sync_branch="stable")
+        github.get_branch_sha = stable_branch_sha
+        github.merge_upstream = no_stable_merge
+        github.compare = stable_compare
+        github.create_changelog_pr = original_create
+
+        stable_result = await run_upstream_sync(deps)
+
+        assert stable_result["outcome"] == "none"
+        assert comparisons == [(stable_before, stable_after)]
+        assert deps.db.get_meta("changelog_pending_base_sha:master") == "1" * 40
+        assert deps.db.get_meta("changelog_pending_outcome:master") == "merged"
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_conflict_issue_number_is_scoped_to_branch(tmp_path):
+    deps, _ = _deps(tmp_path, scenario="conflict")
+    try:
+        master_result = await run_upstream_sync(deps)
+        assert deps.db.get_meta("conflict_issue_number:master") == str(master_result["issue_number"])
+
+        deps.settings = replace(deps.settings, upstream_sync_branch="stable")
+        stable_result = await run_upstream_sync(deps)
+
+        assert stable_result["outcome"] == "conflict"
+        assert stable_result["issue_number"] != master_result["issue_number"]
+        assert deps.db.get_meta("conflict_issue_number:stable") == str(stable_result["issue_number"])
+    finally:
+        deps.db.close()
+
+
+@pytest.mark.asyncio
+async def test_blob_load_failure_does_not_open_pr_or_advance_cursor(tmp_path):
+    deps, github = _deps(tmp_path)
+
+    async def fail_blob_load(path, ref):
+        del path, ref
+        raise GitHubError(503, "GET", "/repos/dmonroym0/superset/git/blobs/large-file")
+
+    github.get_file = fail_blob_load
+    try:
+        result = await run_upstream_sync(deps)
+
+        assert result == {"outcome": "error", "error": "github_unavailable"}
+        assert github.created_prs == []
+        assert deps.db.get_meta("changelog_through_sha:master") is None
     finally:
         deps.db.close()
 
@@ -336,6 +475,7 @@ def test_sync_metrics_include_last_run_state(tmp_path):
             "APP_MODE": "demo",
             "DB_PATH": str(tmp_path / "metrics.db"),
             "UPSTREAM_SYNC_ENABLED": "false",
+            "UPSTREAM_SYNC_BRANCH": "stable",
         }
     )
     app = create_app(
@@ -346,8 +486,10 @@ def test_sync_metrics_include_last_run_state(tmp_path):
 
     with TestClient(app) as client:
         deps = app.state.deps
-        deps.db.set_meta("changelog_through_sha", "a" * 40)
-        deps.db.set_meta("conflict_issue_number", "901")
+        deps.db.set_meta("changelog_through_sha:master", "b" * 40)
+        deps.db.set_meta("changelog_through_sha:stable", "a" * 40)
+        deps.db.set_meta("conflict_issue_number:master", "901")
+        deps.db.set_meta("conflict_issue_number:stable", "902")
         deps.db.record_upstream_sync(1_800_000_000, "conflict", issue_number=901)
         upstream = client.get("/metrics.json").json()["upstream_sync"]
 
@@ -356,6 +498,6 @@ def test_sync_metrics_include_last_run_state(tmp_path):
         "last_outcome": "conflict",
         "last_at": "2027-01-15T08:00:00+00:00",
         "changelog_pr_url": None,
-        "conflict_issue_number": 901,
+        "conflict_issue_number": 902,
         "changelog_through_sha": "a" * 40,
     }

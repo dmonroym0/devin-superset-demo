@@ -13,6 +13,9 @@ _HEADER = "# Fork changelog"
 _CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(\([^)]*\))?(?P<bang>!)?: ")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
 _REQUIREMENTS_FILE = re.compile(r"^requirements/[^/]+\.txt$")
+DEPENDENCY_FILES_TRUNCATED_NOTE = (
+    "_Dependency list may be incomplete: GitHub compare returned its 300-file cap._"
+)
 _GROUP_ORDER = (
     "Breaking changes",
     "feat",
@@ -59,6 +62,8 @@ def render_section(
     base_sha: str,
     head_sha: str,
     synced_on: date,
+    *,
+    files_truncated: bool = False,
 ) -> str:
     lines = [f"## Upstream sync {synced_on.isoformat()} ({base_sha[:7]}..{head_sha[:7]})"]
     for group, entries in grouped_commits(commits).items():
@@ -78,6 +83,8 @@ def render_section(
         lines.extend(f"- {_escape(path)}" for path in requirement_files)
     else:
         lines.append("_No requirements/*.txt changes._")
+    if files_truncated:
+        lines.append(DEPENDENCY_FILES_TRUNCATED_NOTE)
     return "\n".join(lines)
 
 

@@ -243,18 +243,36 @@ class HttpGitHubClient:
 
     async def compare(self, base: str, head: str) -> CompareResult:
         path = f"{self._repo_path}/compare/{quote(base, safe='')}...{quote(head, safe='')}"
-        response = await self._request("GET", path)
-        data = response.json()
-        commits = tuple(
-            UpstreamCommit(
-                sha=item.get("sha", ""),
-                subject=(item.get("commit", {}).get("message") or "").splitlines()[0],
-                is_merge=len(item.get("parents", ())) > 1,
+        commits: list[UpstreamCommit] = []
+        files: tuple[str, ...] = ()
+        files_truncated = False
+        total_commits = None
+        page = 1
+        while True:
+            response = await self._request(
+                "GET",
+                path,
+                params={"per_page": 100, "page": page},
             )
-            for item in data.get("commits", [])
-        )
-        files = tuple(item["filename"] for item in data.get("files", []) if item.get("filename"))
-        return CompareResult(commits, files)
+            data = response.json()
+            page_commits = data.get("commits", [])
+            if page == 1:
+                total_commits = data.get("total_commits")
+                page_files = data.get("files", [])
+                files = tuple(item["filename"] for item in page_files if item.get("filename"))
+                files_truncated = len(page_files) >= 300
+            commits.extend(
+                UpstreamCommit(
+                    sha=item.get("sha", ""),
+                    subject=(item.get("commit", {}).get("message") or "").splitlines()[0],
+                    is_merge=len(item.get("parents", ())) > 1,
+                )
+                for item in page_commits
+            )
+            if (total_commits is not None and len(commits) >= total_commits) or len(page_commits) < 100:
+                break
+            page += 1
+        return CompareResult(tuple(commits), files, files_truncated)
 
     async def _get_file_details(self, path: str, ref: str) -> tuple[str | None, str | None]:
         response = await self._request(
@@ -266,6 +284,19 @@ class HttpGitHubClient:
         if response.status_code == 404:
             return None, None
         data = response.json()
+        if data.get("encoding") != "base64":
+            blob_sha = data.get("sha")
+            if not blob_sha:
+                raise GitHubError(
+                    500,
+                    "GET",
+                    f"{self._repo_path}/contents/{quote(path, safe='/')}",
+                )
+            blob_path = f"{self._repo_path}/git/blobs/{quote(blob_sha, safe='')}"
+            response = await self._request("GET", blob_path)
+            data = response.json()
+            if data.get("encoding") != "base64":
+                raise GitHubError(500, "GET", blob_path)
         content = base64.b64decode(data.get("content", "")).decode("utf-8")
         return content, data.get("sha")
 
@@ -291,19 +322,20 @@ class HttpGitHubClient:
         if ref.status_code == 422 and "reference already exists" not in _response_message(ref).lower():
             raise GitHubError(422, "POST", f"{self._repo_path}/git/refs")
 
-        _, file_sha = await self._get_file_details("FORK_CHANGELOG.md", branch_name)
-        payload = {
-            "message": title,
-            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-            "branch": branch_name,
-        }
-        if file_sha is not None:
-            payload["sha"] = file_sha
-        await self._request(
-            "PUT",
-            f"{self._repo_path}/contents/FORK_CHANGELOG.md",
-            json=payload,
-        )
+        existing_content, file_sha = await self._get_file_details("FORK_CHANGELOG.md", branch_name)
+        if existing_content != content:
+            payload = {
+                "message": title,
+                "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                "branch": branch_name,
+            }
+            if file_sha is not None:
+                payload["sha"] = file_sha
+            await self._request(
+                "PUT",
+                f"{self._repo_path}/contents/FORK_CHANGELOG.md",
+                json=payload,
+            )
 
         pull = await self._request(
             "POST",

@@ -105,6 +105,20 @@ def test_render_section_marks_absent_requirement_changes():
     assert "_No requirements/*.txt changes._" in section
 
 
+def test_render_section_flags_incomplete_dependency_file_list():
+    section = render_section(
+        (),
+        ("requirements/base.txt",),
+        "b" * 40,
+        "c" * 40,
+        date(2026, 10, 2),
+        files_truncated=True,
+    )
+
+    assert "### Dependency changes" in section
+    assert "_Dependency list may be incomplete: GitHub compare returned its 300-file cap._" in section
+
+
 def test_prepend_adds_new_section_after_deduplicated_header():
     section = "## Upstream sync 2026-10-02 (aaaaaaa..bbbbbbb)\n\n- change"
 

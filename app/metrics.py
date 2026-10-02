@@ -9,6 +9,7 @@ from app.budget import Budget
 from app.config import Settings
 from app.db import Database, IssueRow, SessionRow
 from app.models import IssueState
+from app.upstream_sync import branch_meta_key
 
 _IN_FLIGHT = {
     IssueState.SEEN,
@@ -76,7 +77,8 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
     median_time = statistics.median(elapsed) if elapsed else None
     sessions = db.list_sessions()
     sync = db.latest_upstream_sync()
-    conflict_issue_number = db.get_meta("conflict_issue_number")
+    branch = settings.upstream_sync_branch
+    conflict_issue_number = db.get_meta(branch_meta_key("conflict_issue_number", branch))
     return {
         "generated_at": _iso_timestamp(now),
         "mode": settings.mode.value,
@@ -95,7 +97,7 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "last_at": _iso_timestamp(sync["started_at"]) if sync else None,
             "changelog_pr_url": sync["pr_url"] if sync else None,
             "conflict_issue_number": int(conflict_issue_number) if conflict_issue_number else None,
-            "changelog_through_sha": db.get_meta("changelog_through_sha"),
+            "changelog_through_sha": db.get_meta(branch_meta_key("changelog_through_sha", branch)),
         },
         "sessions": [_session_detail(session) for session in sessions],
         "issues_detail": [_issue_detail(issue) for issue in issues],

@@ -1,10 +1,12 @@
 import base64
 import json
+from datetime import date
 
 import httpx
 import pytest
 import respx
 
+from app.changelog import render_section
 from app.config import Settings
 from app.github_client import GitHubError, HttpGitHubClient
 from app.models import Issue, LabelSpec, MergeUpstreamResult, UpstreamCommit
@@ -292,6 +294,163 @@ async def test_compare_returns_commit_subjects_merge_flags_and_files():
         await client.aclose()
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_compare_paginates_all_commits_and_keeps_first_page_files():
+    base_sha = "a" * 40
+    head_sha = "b" * 40
+    route = respx.get(f"{BASE}{REPO_PATH}/compare/{base_sha}...{head_sha}").mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "total_commits": 270,
+                    "commits": [
+                        {
+                            "sha": f"{index:040x}",
+                            "commit": {"message": f"fix: item {index}"},
+                            "parents": [{"sha": "parent"}],
+                        }
+                        for index in range(100)
+                    ],
+                    "files": [{"filename": "requirements/base.txt"}],
+                },
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "total_commits": 270,
+                    "commits": [
+                        {
+                            "sha": f"{index:040x}",
+                            "commit": {"message": f"fix: item {index}"},
+                            "parents": [{"sha": "parent"}],
+                        }
+                        for index in range(100, 200)
+                    ],
+                    "files": [{"filename": "ignored/page-two.txt"}],
+                },
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "total_commits": 270,
+                    "commits": [
+                        {
+                            "sha": f"{index:040x}",
+                            "commit": {"message": f"fix: item {index}"},
+                            "parents": [{"sha": "parent"}],
+                        }
+                        for index in range(200, 270)
+                    ],
+                    "files": [{"filename": "ignored/page-three.txt"}],
+                },
+            ),
+        ]
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        result = await client.compare(base_sha, head_sha)
+
+        assert len(result.commits) == 270
+        assert result.files == ("requirements/base.txt",)
+        assert [dict(call.request.url.params) for call in route.calls] == [
+            {"per_page": "100", "page": "1"},
+            {"per_page": "100", "page": "2"},
+            {"per_page": "100", "page": "3"},
+        ]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_compare_file_cap_marks_rendered_dependency_list_incomplete():
+    base_sha = "a" * 40
+    head_sha = "b" * 40
+    respx.get(f"{BASE}{REPO_PATH}/compare/{base_sha}...{head_sha}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_commits": 0,
+                "commits": [],
+                "files": [{"filename": f"requirements/file-{index}.txt"} for index in range(300)],
+            },
+        )
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        result = await client.compare(base_sha, head_sha)
+        section = render_section(
+            result.commits,
+            result.files,
+            base_sha,
+            head_sha,
+            date(2026, 10, 2),
+            files_truncated=result.files_truncated,
+        )
+
+        assert result.files_truncated is True
+        assert "_Dependency list may be incomplete: GitHub compare returned its 300-file cap._" in section
+        assert section.index("### Dependency changes") < section.index("_Dependency list may be incomplete:")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_file_fetches_git_blob_for_non_base64_contents():
+    content = "# Fork changelog\n\n" + "large payload " * 100
+    respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        return_value=httpx.Response(
+            200,
+            json={"encoding": "none", "content": "", "sha": "blob-sha"},
+        )
+    )
+    blob = respx.get(f"{BASE}{REPO_PATH}/git/blobs/blob-sha").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": base64.b64encode(content.encode()).decode(),
+                "sha": "blob-sha",
+            },
+        )
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        assert await client.get_file("FORK_CHANGELOG.md", "devin/fork-changelog") == content
+        assert blob.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "blob_response",
+    [
+        httpx.Response(503),
+        httpx.Response(200, json={"encoding": "utf-8", "content": "not base64"}),
+    ],
+    ids=["request-failure", "unsupported-encoding"],
+)
+@respx.mock
+async def test_get_file_rejects_failed_or_unsupported_blob_response(blob_response):
+    respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        return_value=httpx.Response(
+            200,
+            json={"encoding": "none", "content": "", "sha": "blob-sha"},
+        )
+    )
+    respx.get(f"{BASE}{REPO_PATH}/git/blobs/blob-sha").mock(return_value=blob_response)
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError):
+            await client.get_file("FORK_CHANGELOG.md", "devin/fork-changelog")
+    finally:
+        await client.aclose()
+
+
 def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status=404, existing_content=None):
     ref = respx.post(f"{BASE}{REPO_PATH}/git/refs").mock(
         return_value=httpx.Response(ref_status, json={"message": "Reference already exists"})
@@ -434,5 +593,66 @@ async def test_create_changelog_pr_returns_existing_pr_after_duplicate_422():
             "dmonroym0:devin/fork-changelog-abcdef123456"
         )
         assert pulls_get.calls[0].request.url.params["state"] == "open"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_retry_skips_put_when_branch_content_matches():
+    branch = "devin/fork-changelog-abcdef123456"
+    content = "# Fork changelog\n\n## New sync\n"
+    ref = respx.post(f"{BASE}{REPO_PATH}/git/refs").mock(
+        side_effect=[
+            httpx.Response(201, json={"ref": f"refs/heads/{branch}"}),
+            httpx.Response(422, json={"message": "Reference already exists"}),
+        ]
+    )
+    content_get = respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        side_effect=[
+            httpx.Response(404, json={"message": "Not Found"}),
+            httpx.Response(
+                200,
+                json={
+                    "content": base64.b64encode(content.encode()).decode(),
+                    "encoding": "base64",
+                    "sha": "file-sha",
+                },
+            ),
+        ]
+    )
+    content_put = respx.put(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        return_value=httpx.Response(200, json={"content": {"sha": "file-sha"}})
+    )
+    pulls = respx.post(f"{BASE}{REPO_PATH}/pulls").mock(
+        side_effect=[
+            httpx.Response(503),
+            httpx.Response(
+                201,
+                json={"html_url": "https://github.com/dmonroym0/superset/pull/902"},
+            ),
+        ]
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        kwargs = {
+            "base_branch": "master",
+            "head_sha": "a" * 40,
+            "branch_name": branch,
+            "content": content,
+            "title": "docs(fork-changelog): retry",
+            "body": "Summary",
+        }
+        with pytest.raises(GitHubError) as error:
+            await client.create_changelog_pr(**kwargs)
+        assert error.value.status_code == 503
+
+        url = await client.create_changelog_pr(**kwargs)
+
+        assert url == "https://github.com/dmonroym0/superset/pull/902"
+        assert ref.call_count == 2
+        assert content_get.call_count == 2
+        assert content_put.call_count == 1
+        assert pulls.call_count == 2
     finally:
         await client.aclose()

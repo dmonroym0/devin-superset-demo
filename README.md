@@ -168,6 +168,7 @@ Create-session fields sent: `prompt`, `title`, `tags` (`devin-superset-demo`, `i
 - DEMO outcomes are scripted. Issues #2–#4 mirror reality; #1 and #5 are made up for the demo.
 - Two unmerged changelog PRs can conflict on `FORK_CHANGELOG.md`.
 - The changelog range can include fork-only commits merged since the previous changelog.
+- The dependency list is flagged incomplete past GitHub's 300-file compare cap.
 - A LIVE sync against scratch repositories has not been run.
 
 ## Next steps (not built)
