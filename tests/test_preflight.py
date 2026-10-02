@@ -243,3 +243,18 @@ def test_live_success_with_webhook_secret():
     assert "TRIAGE_SCHEMA: set (matches playbook)" in output
     assert "FIX_SCHEMA: missing (optional)" in output
     assert "preflight: ok" in output
+
+
+def test_preflight_reports_workflows_permission_only_when_sync_enabled():
+    code, output = run(live_env(UPSTREAM_SYNC_ENABLED="true"), api_handler)
+    assert code == 0
+    assert (
+        "UPSTREAM_SYNC_ENABLED: set (token also needs Contents, Pull requests and Workflows write; "
+        "not checkable read-only)"
+    ) in output
+    assert "preflight: ok" in output
+
+    code, output = run(live_env(UPSTREAM_SYNC_ENABLED="false"), api_handler)
+    assert code == 0
+    assert "UPSTREAM_SYNC_ENABLED" not in output
+    assert "preflight: ok" in output

@@ -16,7 +16,7 @@ from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
 from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
 from app.playbooks import resolve_playbooks
-from app.triage import check_triage, start_triage
+from app.triage import SETTLED_STATUSES, check_triage, start_triage
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,31 @@ async def tick(deps: Deps, actions: IssueActions) -> None:
         issue = db.get_issue(session.issue_number)
         if issue is not None and issue.state is IssueState.FIXING:
             await _guard(deps, session.issue_number, check_fix(deps, session, actions), transient_ok=True)
+    await refresh_settled_sessions(deps)
+
+
+async def refresh_settled_sessions(deps: Deps) -> None:
+    for row in deps.db.list_sessions(settled_only=True):
+        if row.status in SETTLED_STATUSES:
+            continue
+        if deps.clock() - row.created_at >= deps.settings.hard_timeout_s:
+            continue
+        try:
+            info = await deps.devin.get_session(row.session_id)
+            deps.db.update_session(
+                row.session_id,
+                status=info.status,
+                status_detail=info.status_detail,
+                acus_consumed=info.acus_consumed,
+                url=info.url or row.url,
+                updated_at=deps.clock(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "settled Devin session refresh failed for %s: %s",
+                row.session_id,
+                type(exc).__name__,
+            )
 
 
 async def _recover_claims_after_restart(deps: Deps, actions: IssueActions) -> None:

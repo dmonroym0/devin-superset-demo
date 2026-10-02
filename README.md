@@ -62,7 +62,10 @@ python scripts/simulate_webhook.py --issue 1                          # 202 acce
 python scripts/simulate_webhook.py --issue 1 --delivery-id same-id    # run twice: second reply is "duplicate"
 python scripts/simulate_webhook.py --issue 5 --bad-signature          # 401
 curl -X POST http://127.0.0.1:8000/sweep                              # run the sweep now
+curl -X POST 'http://127.0.0.1:8000/sweep?issue=3'
 ```
+
+GitHub's label listing can lag a few seconds after labeling; use the single-issue sweep if the new label is not visible yet.
 
 The DEMO webhook secret is the public value `demo-only-not-a-secret`. Set `GITHUB_WEBHOOK_SECRET` to override it.
 
@@ -112,6 +115,7 @@ Use a **fine-grained personal access token** with access to `dmonroym0/superset`
 | Metadata | Read | required by GitHub for every fine-grained token |
 | Contents | Read and write | required when upstream sync is enabled to read and write the changelog |
 | Pull requests | Read and write | required when upstream sync is enabled to open changelog PRs |
+| Workflows | Read and write | required when upstream sync is enabled and upstream commits change `.github/workflows/`; without it merge-upstream returns 422 |
 
 The service creates any missing `devin:*` labels (including `devin:fixplease`) at startup. It only acts on issues in `dmonroym0/superset`. Webhooks from any other repo, including this one, are ignored.
 
@@ -169,7 +173,8 @@ Create-session fields sent: `prompt`, `title`, `tags` (`devin-superset-demo`, `i
 - Two unmerged changelog PRs can conflict on `FORK_CHANGELOG.md`.
 - The changelog range can include fork-only commits merged since the previous changelog.
 - The dependency list is flagged incomplete past GitHub's 300-file compare cap.
-- A LIVE sync against scratch repositories has not been run.
+- LIVE upstream sync has run once against `dmonroym0/superset` (fast-forward and changelog PR); the conflict path has not been run in LIVE.
+- In LIVE runs Devin reported `acus_consumed` 0.0 for every session, so `consumed_metered` and the board's consumed column stay 0; the granted `max_acu_limit` caps are the budget control.
 
 ## Next steps (not built)
 

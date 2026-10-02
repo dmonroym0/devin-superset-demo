@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import base64
 import logging
-from collections.abc import Sequence
+import re
+from collections.abc import Iterable, Sequence
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -22,11 +23,28 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
+_SECRET_PATTERNS = (
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"),
+    re.compile(r"(?i)\bbearer\s+[^\s\"',]+"),
+    re.compile(r"(?i)\btoken\s+[A-Za-z0-9_\-\.]{20,}"),
+)
+
+
+def redact_secrets(text: str, extra: Iterable[str] = ()) -> str:
+    for secret in extra:
+        if secret:
+            text = text.replace(secret, "[redacted]")
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("[redacted]", text)
+    return text
+
 
 class GitHubError(Exception):
-    def __init__(self, status_code: int, method: str, path: str):
+    def __init__(self, status_code: int, method: str, path: str, *, message: str = ""):
         self.status_code = status_code
         self.method = method
+        self.message = message
         parsed_path = urlsplit(path).path
         self.path = parsed_path or path.split("?", 1)[0]
         super().__init__(f"GitHub API error: {method} {self.path} -> {status_code}")
@@ -63,6 +81,12 @@ class HttpGitHubClient:
             },
         )
 
+    def _safe_response_message(self, response: httpx.Response) -> str:
+        return redact_secrets(
+            _response_message(response),
+            extra=(self._settings.github_token.get(),),
+        )[:300]
+
     async def _request(
         self,
         method: str,
@@ -88,7 +112,12 @@ class HttpGitHubClient:
             ):
                 continue
             if response.status_code >= 400 and response.status_code not in ok_statuses:
-                raise GitHubError(response.status_code, method, safe_path)
+                raise GitHubError(
+                    response.status_code,
+                    method,
+                    safe_path,
+                    message=self._safe_response_message(response),
+                )
             return response
         raise AssertionError("unreachable")
 
@@ -180,7 +209,12 @@ class HttpGitHubClient:
                 ):
                     existing.add(spec.name)
                     continue
-                raise GitHubError(422, "POST", f"{self._repo_path}/labels")
+                raise GitHubError(
+                    422,
+                    "POST",
+                    f"{self._repo_path}/labels",
+                    message=self._safe_response_message(response),
+                )
             created.append(spec.name)
             existing.add(spec.name)
         return created
@@ -230,7 +264,7 @@ class HttpGitHubClient:
             json={"branch": branch},
             ok_statuses=(409, 422),
         )
-        message = _response_message(response)
+        message = self._safe_response_message(response)
         if response.status_code == 409:
             return MergeUpstreamResult("conflict", message)
         if response.status_code == 422:
@@ -291,12 +325,18 @@ class HttpGitHubClient:
                     500,
                     "GET",
                     f"{self._repo_path}/contents/{quote(path, safe='/')}",
+                    message=self._safe_response_message(response),
                 )
             blob_path = f"{self._repo_path}/git/blobs/{quote(blob_sha, safe='')}"
             response = await self._request("GET", blob_path)
             data = response.json()
             if data.get("encoding") != "base64":
-                raise GitHubError(500, "GET", blob_path)
+                raise GitHubError(
+                    500,
+                    "GET",
+                    blob_path,
+                    message=self._safe_response_message(response),
+                )
         content = base64.b64decode(data.get("content", "")).decode("utf-8")
         return content, data.get("sha")
 
@@ -320,7 +360,12 @@ class HttpGitHubClient:
             ok_statuses=(422,),
         )
         if ref.status_code == 422 and "reference already exists" not in _response_message(ref).lower():
-            raise GitHubError(422, "POST", f"{self._repo_path}/git/refs")
+            raise GitHubError(
+                422,
+                "POST",
+                f"{self._repo_path}/git/refs",
+                message=self._safe_response_message(ref),
+            )
 
         existing_content, file_sha = await self._get_file_details("FORK_CHANGELOG.md", branch_name)
         if existing_content != content:
@@ -345,7 +390,12 @@ class HttpGitHubClient:
         )
         if pull.status_code == 422:
             if "a pull request already exists" not in _response_message(pull).lower():
-                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+                raise GitHubError(
+                    422,
+                    "POST",
+                    f"{self._repo_path}/pulls",
+                    message=self._safe_response_message(pull),
+                )
             existing = await self._request(
                 "GET",
                 f"{self._repo_path}/pulls",
@@ -353,7 +403,12 @@ class HttpGitHubClient:
             )
             matches = existing.json()
             if not matches:
-                raise GitHubError(422, "POST", f"{self._repo_path}/pulls")
+                raise GitHubError(
+                    422,
+                    "POST",
+                    f"{self._repo_path}/pulls",
+                    message=self._safe_response_message(pull),
+                )
             return matches[0]["html_url"]
         return pull.json()["html_url"]
 
