@@ -129,6 +129,21 @@ def seed(deps: Deps, *numbers: int) -> None:
         deps.db.upsert_seen_issue(issue, deps.clock())
 
 
+def record_create_then_timeout(devin, *, stages: tuple[str, ...] | None = None) -> list[str]:
+    created: list[str] = []
+    create_session = devin.create_session
+
+    async def create_and_lose_response(request):
+        info = await create_session(request)
+        if stages is None or any(f"stage-{stage}" in request.tags for stage in stages):
+            created.append(info.session_id)
+            raise httpx.ReadTimeout("session created but response was lost")
+        return info
+
+    devin.create_session = create_and_lose_response
+    return created
+
+
 async def run_ticks(deps: Deps, actions, ticks: int = 10, step: float = 1.0, check=None) -> None:
     for _ in range(ticks):
         await tick(deps, actions)
@@ -271,6 +286,33 @@ async def test_every_create_request_has_caps_tags_schema_and_repo(tmp_path):
         "fix dmonroym0/superset#1",
         "fix dmonroym0/superset#3",
     }
+
+
+async def test_restart_preserves_ambiguous_unattached_reservation(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 2)
+    assert deps.db.transition(2, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
+    definite_reservation = deps.budget.reserve(
+        2, Stage.TRIAGE, deps.settings.triage_acu_cap, deps.clock()
+    )
+    reservation = deps.budget.reserve(2, Stage.TRIAGE, deps.settings.triage_acu_cap, deps.clock())
+    assert definite_reservation is not None
+    assert reservation is not None
+    assert deps.budget.mark_create_started(reservation, deps.clock()) is True
+
+    app = FastAPI()
+    register(app, deps, actions)
+    await deps.startup[0]()
+    await tick(deps, actions)
+
+    row = deps.db.get_issue(2)
+    assert row.state is IssueState.NEEDS_HUMAN
+    assert row.route_reason == "session creation outcome unknown; ACU reservation kept until reviewed"
+    assert deps.budget.committed() == deps.settings.triage_acu_cap
+    assert any(event.kind == "create_ambiguous_after_restart" for event in deps.db.list_events(2))
+    assert actions.names(2).count("mark_needs_human") == 1
+    assert deps.devin.requests == []
 
 
 async def test_triage_that_opens_a_pr_is_rejected(tmp_path):

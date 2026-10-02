@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.db import IssueRow, SessionRow
+from app.devin_client import DevinError
 from app.escalation import check_stuck, notify
 from app.interfaces import Deps
 from app.issue_actions import queued_budget_retry_due
@@ -125,22 +126,48 @@ async def start_fix(
             ):
                 db.add_event(number, "cancelled_before_session", reason, now)
             return
-        info = await deps.devin.create_session(
-            SessionRequest(
-                prompt=build_fix_prompt(fresh_issue, playbooks.fix, result, decision),
-                title=f"fix {FORK_REPO}#{number}",
-                playbook_id=playbooks.fix.playbook_id,
-                max_acu_limit=cap,
-                tags=session_tags(number, Stage.FIX),
-                structured_output_schema=playbooks.fix.structured_output_schema,
-                devin_mode=settings.devin_mode_fix,
-            )
+        request = SessionRequest(
+            prompt=build_fix_prompt(fresh_issue, playbooks.fix, result, decision),
+            title=f"fix {FORK_REPO}#{number}",
+            playbook_id=playbooks.fix.playbook_id,
+            max_acu_limit=cap,
+            tags=session_tags(number, Stage.FIX),
+            structured_output_schema=playbooks.fix.structured_output_schema,
+            devin_mode=settings.devin_mode_fix,
         )
     except Exception as exc:  # noqa: BLE001
         budget.cancel(reservation)
         error = f"{type(exc).__name__}: {str(exc)[:200]}"
         db.transition(number, [IssueState.FIXING], IssueState.ERROR, deps.clock(), last_error=error)
         db.add_event(number, "fix_create_failed", error, deps.clock())
+        return
+    if not budget.mark_create_started(reservation, deps.clock()):
+        budget.cancel(reservation)
+        error = "RuntimeError: unable to mark fix session creation as started"
+        db.transition(number, [IssueState.FIXING], IssueState.ERROR, deps.clock(), last_error=error)
+        db.add_event(number, "fix_create_failed", error, deps.clock())
+        return
+    try:
+        info = await deps.devin.create_session(request)
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, DevinError) and 400 <= exc.status_code < 500:
+            budget.cancel(reservation)
+            error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            db.transition(number, [IssueState.FIXING], IssueState.ERROR, deps.clock(), last_error=error)
+            db.add_event(number, "fix_create_failed", error, deps.clock())
+            return
+        reason = "session creation outcome unknown; ACU reservation kept until reviewed"
+        detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+        now = deps.clock()
+        if db.transition(
+            number,
+            [IssueState.FIXING],
+            IssueState.NEEDS_HUMAN,
+            now,
+            route_reason=reason,
+        ):
+            db.add_event(number, "fix_create_ambiguous", detail, now)
+            await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
         return
     now = deps.clock()
     budget.attach(reservation, info.session_id)

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from app.db import SessionRow
 from app.devin_client import DevinError
+from app.escalation import notify
 from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
 from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
@@ -91,7 +92,7 @@ async def tick(deps: Deps, actions: IssueActions) -> None:
             await _guard(deps, session.issue_number, check_fix(deps, session, actions), transient_ok=True)
 
 
-def _recover_claims_after_restart(deps: Deps) -> None:
+async def _recover_claims_after_restart(deps: Deps, actions: IssueActions) -> None:
     recoveries = (
         (IssueState.TRIAGING, Stage.TRIAGE, IssueState.SEEN),
         (IssueState.FIXING, Stage.FIX, IssueState.TRIAGED),
@@ -126,6 +127,27 @@ def _recover_claims_after_restart(deps: Deps) -> None:
                     logger.info("readopted session %s for issue #%s after restart", session_id, issue.number)
                 continue
             cancelled = deps.budget.cancel_unattached(issue.number, stage)
+            ambiguous = deps.budget.unattached_create_started(issue.number, stage)
+            if ambiguous:
+                now = deps.clock()
+                reason = "session creation outcome unknown; ACU reservation kept until reviewed"
+                if deps.db.transition(
+                    issue.number,
+                    [claimed_state],
+                    IssueState.NEEDS_HUMAN,
+                    now,
+                    route_reason=reason,
+                ):
+                    detail = f"{ambiguous} create-started unattached {stage.value} reservation(s)"
+                    deps.db.add_event(issue.number, "create_ambiguous_after_restart", detail, now)
+                    await notify(
+                        deps,
+                        issue.number,
+                        "mark_needs_human",
+                        actions.mark_needs_human(deps, issue.number, reason),
+                    )
+                    logger.info("marked issue #%s for review after ambiguous create on restart", issue.number)
+                continue
             now = deps.clock()
             if deps.db.transition(issue.number, [claimed_state], target_state, now):
                 detail = (
@@ -149,7 +171,7 @@ def register(app: FastAPI, deps: Deps, actions: IssueActions | None = None) -> N
         logger.info(
             "Playbooks resolved: triage=%s fix=%s", deps.playbooks.triage.title, deps.playbooks.fix.title
         )
-        _recover_claims_after_restart(deps)
+        await _recover_claims_after_restart(deps, resolved_actions)
 
     async def worker() -> None:
         while True:

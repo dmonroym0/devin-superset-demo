@@ -1,9 +1,17 @@
 from dataclasses import replace
 
 import pytest
-from test_pipeline import RecordingActions, make_deps, seed, state
+from test_pipeline import (
+    RecordingActions,
+    make_deps,
+    record_create_then_timeout,
+    run_ticks,
+    seed,
+    state,
+)
 
 from app.db import SessionRow
+from app.devin_client import DevinError
 from app.fake_devin import FakeDevin
 from app.fix import check_fix
 from app.models import Confidence, IssueState, PullRequestRef, RouteAction, SessionInfo, Stage, Verdict
@@ -39,7 +47,7 @@ class ScriptedDevin(FakeDevin):
     async def create_session(self, request):
         if self.fail_create:
             self.requests.append(request)
-            raise RuntimeError("upstream unavailable")
+            raise DevinError(400, "POST", "/sessions")
         return await super().create_session(request)
 
     async def get_session(self, session_id):
@@ -92,6 +100,43 @@ async def test_start_triage_creates_session_and_marks_in_progress(tmp_path):
     row = deps.db.list_sessions(stage=Stage.TRIAGE, issue_number=1)[0]
     assert row.max_acu_limit == 5 and row.devin_mode is None
     assert deps.budget.committed() == 5
+
+
+async def test_ambiguous_triage_create_keeps_reservation_and_does_not_retry(tmp_path):
+    devin = FakeDevin.from_scenarios()
+    created = record_create_then_timeout(devin)
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    await run_ticks(deps, actions, ticks=3)
+
+    row = deps.db.get_issue(2)
+    assert row.state is IssueState.NEEDS_HUMAN
+    assert row.route_reason == "session creation outcome unknown; ACU reservation kept until reviewed"
+    assert deps.budget.committed() == deps.settings.triage_acu_cap
+    assert len(created) == 1
+    assert any(event.kind == "triage_create_ambiguous" for event in deps.db.list_events(2))
+    assert actions.names(2).count("mark_needs_human") == 1
+
+
+async def test_definite_triage_create_error_cancels_reservation(tmp_path):
+    devin = FakeDevin.from_scenarios()
+
+    async def fail_create(request):
+        raise DevinError(400, "POST", "/sessions")
+
+    devin.create_session = fail_create
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    assert state(deps, 2) is IssueState.ERROR
+    assert deps.budget.committed() == 0
+    assert any(event.kind == "triage_create_failed" for event in deps.db.list_events(2))
 
 
 async def _queue_issue_behind_triage_reservation(tmp_path):
@@ -166,7 +211,7 @@ async def test_create_failure_cancels_reservation_and_errors(tmp_path):
     await start_triage(deps, deps.db.get_issue(1), RecordingActions())
     row = deps.db.get_issue(1)
     assert row.state is IssueState.ERROR
-    assert row.last_error.startswith("RuntimeError") and "sk-secret-value" not in row.last_error
+    assert row.last_error.startswith("DevinError") and "sk-secret-value" not in row.last_error
     assert deps.budget.committed() == 0
 
 

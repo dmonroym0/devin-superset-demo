@@ -50,6 +50,22 @@ def test_cancel_unattached_reservations_only_cancels_matching_issue_and_stage(tm
     db.close()
 
 
+def test_create_started_unattached_reservations_are_preserved(tmp_path):
+    db, budget = make_budget(tmp_path)
+    definite_id = budget.reserve(1, Stage.TRIAGE, 5, 100.0)
+    ambiguous_id = budget.reserve(2, Stage.TRIAGE, 5, 100.0)
+    assert definite_id is not None
+    assert ambiguous_id is not None
+
+    assert budget.mark_create_started(ambiguous_id, 101.0) is True
+    assert budget.unattached_create_started(2, Stage.TRIAGE) == 1
+    assert budget.cancel_unattached(1, Stage.TRIAGE) == 1
+    assert budget.cancel_unattached(2, Stage.TRIAGE) == 0
+    assert budget.committed() == 5
+
+    db.close()
+
+
 def test_attached_without_session_excludes_reservations_with_recorded_sessions(tmp_path):
     db, budget = make_budget(tmp_path)
     reservation_id = budget.reserve(3, Stage.TRIAGE, 5, 100.0)

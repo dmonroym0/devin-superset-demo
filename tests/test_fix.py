@@ -1,8 +1,16 @@
 from dataclasses import replace
 
-from test_pipeline import RecordingActions, make_deps, run_ticks, seed, state
+from test_pipeline import (
+    RecordingActions,
+    make_deps,
+    record_create_then_timeout,
+    run_ticks,
+    seed,
+    state,
+)
 from test_triage import ScriptedDevin
 
+from app.fake_devin import FakeDevin
 from app.fix import check_fix, start_fix
 from app.models import IssueState, RouteAction, RouteDecision, SessionInfo, Stage, TriageResult
 
@@ -66,6 +74,26 @@ async def test_fix_without_trigger_label_is_cancelled_before_session(tmp_path):
     assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(1))
     assert deps.budget.committed() == 0
     assert deps.devin.requests == []
+
+
+async def test_ambiguous_fix_create_keeps_reservation_and_does_not_retry(tmp_path):
+    devin = FakeDevin.from_scenarios()
+    created = record_create_then_timeout(devin, stages=("fix",))
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+
+    await run_ticks(deps, actions, ticks=12)
+
+    row = deps.db.get_issue(1)
+    assert row.state is IssueState.NEEDS_HUMAN
+    assert row.route_reason == "session creation outcome unknown; ACU reservation kept until reviewed"
+    assert deps.budget.committed() == deps.settings.triage_acu_cap + deps.settings.fix_acu_cap
+    assert len(created) == 1
+    assert any(event.kind == "fix_create_ambiguous" for event in deps.db.list_events(1))
+    assert actions.names(1).count("mark_needs_human") == 1
+    await run_ticks(deps, actions, ticks=3)
+    assert len(created) == 1
 
 
 async def test_settled_without_pr_is_needs_human(tmp_path):

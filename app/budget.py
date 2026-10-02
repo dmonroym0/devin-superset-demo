@@ -59,15 +59,35 @@ class Budget:
             self._db._connection.commit()
             return cursor.rowcount == 1
 
+    def mark_create_started(self, reservation_id: int, now: float) -> bool:
+        with self._db._lock:
+            cursor = self._db._connection.execute(
+                "UPDATE ledger SET create_started_at=? "
+                "WHERE id=? AND cancelled=0 AND session_id IS NULL",
+                (now, reservation_id),
+            )
+            self._db._connection.commit()
+            return cursor.rowcount == 1
+
     def cancel_unattached(self, issue_number: int, stage: Stage) -> int:
         with self._db._lock:
             cursor = self._db._connection.execute(
                 "UPDATE ledger SET cancelled=1 "
-                "WHERE issue_number=? AND stage=? AND session_id IS NULL AND cancelled=0",
+                "WHERE issue_number=? AND stage=? AND session_id IS NULL AND cancelled=0 "
+                "AND create_started_at IS NULL",
                 (issue_number, stage.value),
             )
             self._db._connection.commit()
             return cursor.rowcount
+
+    def unattached_create_started(self, issue_number: int, stage: Stage) -> int:
+        with self._db._lock:
+            row = self._db._connection.execute(
+                "SELECT COUNT(*) FROM ledger WHERE issue_number=? AND stage=? "
+                "AND session_id IS NULL AND cancelled=0 AND create_started_at IS NOT NULL",
+                (issue_number, stage.value),
+            ).fetchone()
+        return int(row[0])
 
     def attached_without_session(self, issue_number: int, stage: Stage) -> list[tuple[int, str, int, float]]:
         with self._db._lock:

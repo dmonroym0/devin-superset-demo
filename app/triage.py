@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from app.db import IssueRow, SessionRow
+from app.devin_client import DevinError
 from app.escalation import archive_triage, check_stuck, notify
 from app.interfaces import Deps, ResolvedPlaybooks
 from app.issue_actions import queued_budget_retry_due
@@ -150,12 +151,39 @@ async def start_triage(deps: Deps, issue_row: IssueRow, actions: IssueActions) -
             structured_output_required=True,
             devin_mode=settings.devin_mode_triage,
         )
-        info = await deps.devin.create_session(request)
     except Exception as exc:  # noqa: BLE001
         budget.cancel(reservation)
         error = f"{type(exc).__name__}: {str(exc)[:200]}"
         db.transition(number, [IssueState.TRIAGING], IssueState.ERROR, deps.clock(), last_error=error)
         db.add_event(number, "triage_create_failed", error, deps.clock())
+        return
+    if not budget.mark_create_started(reservation, deps.clock()):
+        budget.cancel(reservation)
+        error = "RuntimeError: unable to mark triage session creation as started"
+        db.transition(number, [IssueState.TRIAGING], IssueState.ERROR, deps.clock(), last_error=error)
+        db.add_event(number, "triage_create_failed", error, deps.clock())
+        return
+    try:
+        info = await deps.devin.create_session(request)
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, DevinError) and 400 <= exc.status_code < 500:
+            budget.cancel(reservation)
+            error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            db.transition(number, [IssueState.TRIAGING], IssueState.ERROR, deps.clock(), last_error=error)
+            db.add_event(number, "triage_create_failed", error, deps.clock())
+            return
+        reason = "session creation outcome unknown; ACU reservation kept until reviewed"
+        detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+        now = deps.clock()
+        if db.transition(
+            number,
+            [IssueState.TRIAGING],
+            IssueState.NEEDS_HUMAN,
+            now,
+            route_reason=reason,
+        ):
+            db.add_event(number, "triage_create_ambiguous", detail, now)
+            await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
         return
     now = deps.clock()
     budget.attach(reservation, info.session_id)

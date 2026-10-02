@@ -54,6 +54,23 @@ def test_upsert_revives_cancelled_issue_as_seen(tmp_path):
     db.close()
 
 
+def test_init_schema_migrates_create_started_column(tmp_path):
+    db = Database(str(tmp_path / "legacy.db"))
+    db._connection.execute(
+        "CREATE TABLE ledger (id INTEGER PRIMARY KEY, issue_number INTEGER NOT NULL, "
+        "stage TEXT NOT NULL, cap INTEGER NOT NULL, session_id TEXT, created_at REAL NOT NULL, "
+        "cancelled INTEGER NOT NULL DEFAULT 0)"
+    )
+    db._connection.commit()
+
+    db.init_schema()
+
+    columns = {row["name"] for row in db._connection.execute("PRAGMA table_info(ledger)")}
+    assert "create_started_at" in columns
+
+    db.close()
+
+
 def test_transition_is_compare_and_set(tmp_path):
     db = Database(str(tmp_path / "test.db"))
     db.init_schema()

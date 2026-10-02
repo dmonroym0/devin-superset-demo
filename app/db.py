@@ -147,7 +147,8 @@ class Database:
             cap INTEGER NOT NULL,
             session_id TEXT,
             created_at REAL NOT NULL,
-            cancelled INTEGER NOT NULL DEFAULT 0
+            cancelled INTEGER NOT NULL DEFAULT 0,
+            create_started_at REAL
         );
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY,
@@ -159,6 +160,12 @@ class Database:
         """
         with self._lock:
             self._connection.executescript(schema)
+            columns = {
+                row["name"] for row in self._connection.execute("PRAGMA table_info(ledger)")
+            }
+            if "create_started_at" not in columns:
+                self._connection.execute("ALTER TABLE ledger ADD COLUMN create_started_at REAL")
+                self._connection.commit()
 
     def record_delivery(
         self, delivery_id: str, event: str, action: str, issue_number: int | None, now: float
