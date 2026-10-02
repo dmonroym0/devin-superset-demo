@@ -46,11 +46,11 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
-| Board (incl. mode + acus_consumed per session) | planned | app/dashboard.py, app/templates/ | open http://127.0.0.1:8000/ | R7, K |
-| Preflight (set/missing/invalid, schema drift) | planned | app/preflight.py | `python -m app.preflight` | R13, E |
-| Dockerfile (ECR base, non-root, healthcheck) | planned | Dockerfile | `docker compose up` | R12 |
-| Compose (127.0.0.1:8000) + .dockerignore | planned | docker-compose.yml, .dockerignore | `docker compose config` | R11, R12, Q5 |
-| CI (ruff, pytest, docker build, gitleaks) | planned | .github/workflows/ci.yml | GitHub Actions | R11 |
+| Board (incl. mode + acus_consumed per session) | built | app/dashboard.py, app/templates/ | open http://127.0.0.1:8000/ | R7, K |
+| Preflight (set/missing/invalid, schema drift) | built | app/preflight.py | `python -m app.preflight` | R13, E |
+| Dockerfile (ECR base, non-root, healthcheck) | built | Dockerfile | `docker compose up` | R12 |
+| Compose (127.0.0.1:8000) + .dockerignore | built | docker-compose.yml, .dockerignore | `docker compose config` | R11, R12, Q5 |
+| CI (ruff, pytest, docker build, gitleaks) | built | .github/workflows/ci.yml | GitHub Actions | R11 |
 
 ## Integration (lead)
 
