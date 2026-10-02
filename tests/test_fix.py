@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import pytest
 from test_pipeline import (
     RecordingActions,
     make_deps,
@@ -108,6 +109,28 @@ async def test_settled_without_pr_is_needs_human(tmp_path):
     assert row.route_reason == "fix session finished without a PR"
     assert ("mark_needs_human", 1, "fix session finished without a PR") in actions.calls
     assert scripted.archived == []
+
+
+@pytest.mark.parametrize(
+    ("status", "status_detail", "reason"),
+    [
+        ("suspended", "waiting for approval", "fix session suspended (waiting for approval)"),
+        ("error", None, "fix session errored (no detail)"),
+    ],
+)
+async def test_settled_fix_preserves_suspended_and_error_reasons(
+    tmp_path, status, status_detail, reason
+):
+    deps, actions = await advance_to_fixing(tmp_path, 1)
+    session = deps.db.list_sessions(stage=Stage.FIX, issue_number=1)[0]
+    scripted = ScriptedDevin()
+    scripted.script.append(SessionInfo(session.session_id, status, status_detail=status_detail))
+    deps.devin = scripted
+
+    await check_fix(deps, session, actions)
+
+    assert deps.db.get_issue(1).route_reason == reason
+    assert ("mark_needs_human", 1, reason) in actions.calls
 
 
 async def test_fix_budget_refusal_keeps_triaged(tmp_path):

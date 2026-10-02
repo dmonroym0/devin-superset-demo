@@ -209,7 +209,14 @@ async def check_fix(deps: Deps, session_row: SessionRow, actions: IssueActions) 
     if not is_settled(info):
         await check_stuck(deps, session_row, info, actions)
         return
+    reason = (
+        f"fix session suspended ({info.status_detail or 'no detail'})"
+        if info.status == "suspended"
+        else f"fix session errored ({info.status_detail or 'no detail'})"
+        if info.status == "error"
+        else NO_PR_REASON
+    )
     db.update_session(session_row.session_id, settled_at=now)
-    if db.transition(number, [IssueState.FIXING], IssueState.NEEDS_HUMAN, now, route_reason=NO_PR_REASON):
+    if db.transition(number, [IssueState.FIXING], IssueState.NEEDS_HUMAN, now, route_reason=reason):
         db.add_event(number, "fix_no_pr", session_row.session_id, now)
-        await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, NO_PR_REASON))
+        await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
