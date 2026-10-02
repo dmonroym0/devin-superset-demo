@@ -32,6 +32,28 @@ def test_upsert_issue_is_idempotent_and_refreshes_title(tmp_path):
     db.close()
 
 
+def test_upsert_revives_cancelled_issue_as_seen(tmp_path):
+    db = Database(str(tmp_path / "test.db"))
+    db.init_schema()
+    issue = Issue(number=4, title="Initial", body="body")
+    db.upsert_seen_issue(issue, 100.0)
+    db.transition(
+        4,
+        [IssueState.SEEN],
+        IssueState.CANCELLED,
+        110.0,
+        route_reason="issue closed",
+    )
+
+    assert db.upsert_seen_issue(Issue(number=4, title="Relabeled", body="new"), 120.0) is True
+    row = db.get_issue(4)
+    assert row.state is IssueState.SEEN
+    assert row.route_reason is None
+    assert row.title == "Relabeled"
+
+    db.close()
+
+
 def test_transition_is_compare_and_set(tmp_path):
     db = Database(str(tmp_path / "test.db"))
     db.init_schema()

@@ -1,5 +1,6 @@
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -121,7 +122,11 @@ async def make_deps(tmp_path, devin=None, **env) -> Deps:
 
 def seed(deps: Deps, *numbers: int) -> None:
     for number in numbers:
-        deps.db.upsert_seen_issue(deps.github.issues[number], deps.clock())
+        issue = deps.github.issues[number]
+        if deps.settings.trigger_label not in issue.labels:
+            issue = replace(issue, labels=(*issue.labels, deps.settings.trigger_label))
+            deps.github.issues[number] = issue
+        deps.db.upsert_seen_issue(issue, deps.clock())
 
 
 async def run_ticks(deps: Deps, actions, ticks: int = 10, step: float = 1.0, check=None) -> None:
@@ -170,10 +175,10 @@ async def test_seeded_scenarios_end_states_and_archiving(tmp_path):
 
     assert state(deps, 2) is IssueState.NOT_REACHABLE
     assert state(deps, 3) is IssueState.PR_OPENED
-    assert deps.db.get_issue(3).pr_url == "https://demo.invalid/dmonroym0/superset/pull/103"
+    assert deps.db.get_issue(3).pr_url == "https://github.com/dmonroym0/superset/pull/103"
     assert state(deps, 4) is IssueState.NEEDS_HUMAN
     assert "major version bump" in deps.db.get_issue(4).route_reason
-    assert ("mark_pr_opened", 3, ("https://demo.invalid/dmonroym0/superset/pull/103",)) in actions.calls
+    assert ("mark_pr_opened", 3, ("https://github.com/dmonroym0/superset/pull/103",)) in actions.calls
 
     devin = deps.devin
     triage_ids = {row.session_id for row in deps.db.list_sessions(stage=Stage.TRIAGE)}
@@ -277,7 +282,7 @@ async def test_triage_that_opens_a_pr_is_rejected(tmp_path):
     routes = [call for call in actions.calls if call[0] == "apply_route" and call[1] == 9001]
     assert len(routes) == 1
     _, _, decision, result, rejected = routes[0]
-    assert rejected == ("https://demo.invalid/dmonroym0/superset/pull/9001",)
+    assert rejected == ("https://github.com/dmonroym0/superset/pull/9001",)
     assert result is None and decision.action.value == "needs_human"
     assert any(event.kind == "triage_rejected" for event in deps.db.list_events(9001))
     assert not [r for r in deps.devin.requests if "stage-fix" in r.tags]

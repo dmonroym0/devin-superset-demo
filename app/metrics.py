@@ -62,6 +62,7 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
         "not_reachable": sum(issue.state is IssueState.NOT_REACHABLE for issue in issues),
         "queued_budget": sum(issue.state is IssueState.QUEUED_BUDGET for issue in issues),
         "error": sum(issue.state is IssueState.ERROR for issue in issues),
+        "cancelled": sum(issue.state is IssueState.CANCELLED for issue in issues),
     }
     denominator = counts["pr_opened"] + counts["not_reachable"] + counts["needs_human"]
     automation_rate = (

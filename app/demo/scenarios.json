@@ -203,7 +203,7 @@
         "polls": 3,
         "pull_requests": [
           {
-            "pr_url": "https://demo.invalid/dmonroym0/superset/pull/103",
+            "pr_url": "https://github.com/dmonroym0/superset/pull/103",
             "pr_state": "open"
           }
         ]
@@ -295,7 +295,7 @@
         "polls": 1,
         "pull_requests": [
           {
-            "pr_url": "https://demo.invalid/dmonroym0/superset/pull/9001",
+            "pr_url": "https://github.com/dmonroym0/superset/pull/9001",
             "pr_state": "open"
           }
         ],

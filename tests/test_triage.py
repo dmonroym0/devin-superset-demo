@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 from test_pipeline import RecordingActions, make_deps, seed, state
 
@@ -17,7 +19,7 @@ OUTPUT = {
     "caveats": ["c"],
     "cves": [
         {
-            "cve_id": "CVE-2026-1",
+            "cve_id": "CVE-2026-23949",
             "verdict": "REACHABLE",
             "confidence": "medium",
             "evidence": [{"file": "a.py", "line": 3, "description": "calls foo"}],
@@ -90,6 +92,61 @@ async def test_start_triage_creates_session_and_marks_in_progress(tmp_path):
     row = deps.db.list_sessions(stage=Stage.TRIAGE, issue_number=1)[0]
     assert row.max_acu_limit == 5 and row.devin_mode is None
     assert deps.budget.committed() == 5
+
+
+async def _queue_issue_behind_triage_reservation(tmp_path):
+    deps = await make_deps(
+        tmp_path,
+        ACU_CEILING="5",
+        TRIAGE_ACU_CAP="5",
+        FIX_ACU_CAP="5",
+    )
+    actions = RecordingActions()
+    seed(deps, 1, 2)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert state(deps, 2) is IssueState.QUEUED_BUDGET
+
+    reservation = deps.db._connection.execute(
+        "SELECT id FROM ledger WHERE issue_number=1 AND stage='triage' AND cancelled=0"
+    ).fetchone()
+    assert reservation is not None
+    deps.budget.cancel(int(reservation["id"]))
+    return deps, actions, deps.budget.committed()
+
+
+async def test_closed_queued_triage_issue_is_cancelled_before_session(tmp_path):
+    deps, actions, committed_before = await _queue_issue_behind_triage_reservation(tmp_path)
+    deps.github.issues[2] = replace(deps.github.issues[2], state="closed")
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    issue = deps.db.get_issue(2)
+    assert issue.state is IssueState.CANCELLED
+    assert issue.route_reason == "issue closed"
+    assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(2))
+    assert deps.budget.committed() == committed_before
+    assert not any("issue-2" in request.tags for request in deps.devin.requests)
+    assert actions.names(2) == ["mark_queued_budget"]
+
+
+async def test_queued_triage_issue_without_trigger_label_is_cancelled(tmp_path):
+    deps, actions, committed_before = await _queue_issue_behind_triage_reservation(tmp_path)
+    issue = deps.github.issues[2]
+    deps.github.issues[2] = replace(
+        issue,
+        labels=tuple(label for label in issue.labels if label != deps.settings.trigger_label),
+    )
+
+    await start_triage(deps, deps.db.get_issue(2), actions)
+
+    issue_row = deps.db.get_issue(2)
+    assert issue_row.state is IssueState.CANCELLED
+    assert issue_row.route_reason == "trigger label removed"
+    assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(2))
+    assert deps.budget.committed() == committed_before
+    assert not any("issue-2" in request.tags for request in deps.devin.requests)
+    assert actions.names(2) == ["mark_queued_budget"]
 
 
 async def test_start_triage_cas_loss_does_nothing(tmp_path):

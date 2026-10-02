@@ -2,7 +2,7 @@ from app.budget import Budget
 from app.config import Settings
 from app.db import Database
 from app.metrics import compute
-from app.models import Issue, IssueState
+from app.models import Issue, IssueState, TERMINAL_STATES
 
 
 def test_metrics_rate_and_median_time_to_pr():
@@ -15,8 +15,9 @@ def test_metrics_rate_and_median_time_to_pr():
         Issue(number=2, title="Two", body=""),
         Issue(number=3, title="Three", body=""),
         Issue(number=4, title="Four", body=""),
+        Issue(number=5, title="Five", body=""),
     ]
-    for issue, first_seen in zip(issues, [0, 10, 20, 30], strict=True):
+    for issue, first_seen in zip(issues, [0, 10, 20, 30, 40], strict=True):
         db.upsert_seen_issue(issue, first_seen)
 
     db.transition(
@@ -27,19 +28,22 @@ def test_metrics_rate_and_median_time_to_pr():
     )
     db.transition(3, [IssueState.SEEN], IssueState.NOT_REACHABLE, 120)
     db.transition(4, [IssueState.SEEN], IssueState.NEEDS_HUMAN, 130)
+    db.transition(5, [IssueState.SEEN], IssueState.CANCELLED, 140)
 
     metrics = compute(db, budget, settings, now=200)
     assert metrics["automation_rate"] == 0.75
     assert metrics["median_time_to_pr_s"] == 70.0
     assert metrics["issues"] == {
-        "seen": 4,
+        "seen": 5,
         "in_flight": 0,
         "pr_opened": 2,
         "needs_human": 1,
         "not_reachable": 1,
         "queued_budget": 0,
         "error": 0,
+        "cancelled": 1,
     }
+    assert IssueState.CANCELLED in TERMINAL_STATES
 
     db.close()
 

@@ -111,9 +111,23 @@ async def start_fix(
             )
         return
     try:
+        fresh_issue = await deps.github.get_issue(number)
+        if fresh_issue.state != "open" or settings.trigger_label not in fresh_issue.labels:
+            reason = "issue closed" if fresh_issue.state != "open" else "trigger label removed"
+            budget.cancel(reservation)
+            now = deps.clock()
+            if db.transition(
+                number,
+                [IssueState.FIXING],
+                IssueState.CANCELLED,
+                now,
+                route_reason=reason,
+            ):
+                db.add_event(number, "cancelled_before_session", reason, now)
+            return
         info = await deps.devin.create_session(
             SessionRequest(
-                prompt=build_fix_prompt(issue, playbooks.fix, result, decision),
+                prompt=build_fix_prompt(fresh_issue, playbooks.fix, result, decision),
                 title=f"fix {FORK_REPO}#{number}",
                 playbook_id=playbooks.fix.playbook_id,
                 max_acu_limit=cap,

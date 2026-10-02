@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.fake_github import FakeGitHub
 from app.main import create_app
-from app.models import IssueState
+from app.models import Issue, IssueState
 
 SECRET = "test-only-webhook-secret"
 
@@ -76,6 +76,33 @@ def test_valid_webhook_is_deduped_and_persists_issue(tmp_path, fake_devin):
         assert app.state.deps.db.get_issue(1).state is IssueState.SEEN
         accepted = [event for event in app.state.deps.db.list_events() if event.kind == "webhook_accepted"]
         assert len(accepted) == 1
+
+
+def test_relabelled_cancelled_issue_is_revived_by_webhook(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    body = _payload(77)
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        db = app.state.deps.db
+        db.upsert_seen_issue(Issue(number=77, title="Cancelled issue", body=""), 90.0)
+        db.transition(
+            77,
+            [IssueState.SEEN],
+            IssueState.CANCELLED,
+            95.0,
+            route_reason="trigger label removed",
+        )
+        response = client.post(
+            "/webhooks/github",
+            content=body,
+            headers=_headers(body, delivery="relabel-cancelled-77"),
+        )
+        assert response.status_code == 202
+        assert response.json() == {"status": "accepted", "issue": 77, "new": True}
+        row = db.get_issue(77)
+        assert row.state is IssueState.SEEN
+        assert row.route_reason is None
+        assert "devin:fixplease" in app.state.deps.github.issues[77].labels
 
 
 def test_failed_webhook_accept_can_retry_same_delivery(tmp_path, fake_devin):

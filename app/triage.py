@@ -127,6 +127,19 @@ async def start_triage(deps: Deps, issue_row: IssueRow, actions: IssueActions) -
         return
     try:
         issue = await deps.github.get_issue(number)
+        if issue.state != "open" or settings.trigger_label not in issue.labels:
+            reason = "issue closed" if issue.state != "open" else "trigger label removed"
+            budget.cancel(reservation)
+            now = deps.clock()
+            if db.transition(
+                number,
+                [IssueState.TRIAGING],
+                IssueState.CANCELLED,
+                now,
+                route_reason=reason,
+            ):
+                db.add_event(number, "cancelled_before_session", reason, now)
+            return
         request = SessionRequest(
             prompt=build_triage_prompt(issue, playbooks.triage),
             title=f"triage {FORK_REPO}#{number}",

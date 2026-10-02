@@ -204,9 +204,20 @@ class Database:
                 )
                 is_new_issue = issue_cursor.rowcount == 1
                 if not is_new_issue:
-                    self._connection.execute(
-                        "UPDATE issues SET title=? WHERE number=?", (issue.title, issue.number)
-                    )
+                    existing = self._connection.execute(
+                        "SELECT state FROM issues WHERE number=?", (issue.number,)
+                    ).fetchone()
+                    if existing["state"] == IssueState.CANCELLED.value:
+                        self._connection.execute(
+                            "UPDATE issues SET title=?, state=?, route_reason=NULL, updated_at=? "
+                            "WHERE number=?",
+                            (issue.title, IssueState.SEEN.value, now, issue.number),
+                        )
+                        is_new_issue = True
+                    else:
+                        self._connection.execute(
+                            "UPDATE issues SET title=? WHERE number=?", (issue.title, issue.number)
+                        )
                 self._connection.execute(
                     "INSERT INTO events(issue_number, kind, detail, created_at) VALUES (?, ?, ?, ?)",
                     (issue.number, "webhook_accepted", f"delivery {delivery_id}", now),
@@ -226,9 +237,20 @@ class Database:
             )
             inserted = cursor.rowcount == 1
             if not inserted:
-                self._connection.execute(
-                    "UPDATE issues SET title=? WHERE number=?", (issue.title, issue.number)
-                )
+                existing = self._connection.execute(
+                    "SELECT state FROM issues WHERE number=?", (issue.number,)
+                ).fetchone()
+                if existing["state"] == IssueState.CANCELLED.value:
+                    self._connection.execute(
+                        "UPDATE issues SET title=?, state=?, route_reason=NULL, updated_at=? "
+                        "WHERE number=?",
+                        (issue.title, IssueState.SEEN.value, now, issue.number),
+                    )
+                    inserted = True
+                else:
+                    self._connection.execute(
+                        "UPDATE issues SET title=? WHERE number=?", (issue.title, issue.number)
+                    )
             self._connection.commit()
             return inserted
 

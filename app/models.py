@@ -24,10 +24,17 @@ class IssueState(StrEnum):
     NEEDS_HUMAN = "needs_human"
     NOT_REACHABLE = "not_reachable"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 TERMINAL_STATES: frozenset[IssueState] = frozenset(
-    {IssueState.PR_OPENED, IssueState.NEEDS_HUMAN, IssueState.NOT_REACHABLE, IssueState.ERROR}
+    {
+        IssueState.PR_OPENED,
+        IssueState.NEEDS_HUMAN,
+        IssueState.NOT_REACHABLE,
+        IssueState.ERROR,
+        IssueState.CANCELLED,
+    }
 )
 
 

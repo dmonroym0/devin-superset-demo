@@ -20,7 +20,7 @@ from app.models import (
 from scripts.simulate_webhook import build_payload, sign
 
 DEMO_SECRET = "demo-only-not-a-secret"
-REJECTED_PR_URL = "https://demo.invalid/dmonroym0/superset/pull/9001"
+REJECTED_PR_URL = "https://github.com/dmonroym0/superset/pull/9001"
 
 
 def _settings(db_path, **env):
@@ -73,7 +73,10 @@ def _assert_triage_comment_lists_cves(github, number):
     cve_ids = set(re.findall(r"CVE-\d{4}-\d+", issue.body))
     comments = github.comments.get(number, [])
     assert cve_ids
-    assert any(cve_ids <= set(re.findall(r"CVE-\d{4}-\d+", comment)) for comment in comments)
+    assert any(
+        cve_ids <= set(re.findall(r"CVE-\d{4}-\d+", comment.replace("\\-", "-")))
+        for comment in comments
+    )
 
 
 def test_demo_end_to_end(tmp_path):
@@ -96,7 +99,7 @@ def test_demo_end_to_end(tmp_path):
 
         assert github.closed[2] == "not_planned"
         assert LABEL_LOW_PRIORITY in github.labels(2)
-        assert app.state.deps.db.get_issue(3).pr_url == ("https://demo.invalid/dmonroym0/superset/pull/103")
+        assert app.state.deps.db.get_issue(3).pr_url == ("https://github.com/dmonroym0/superset/pull/103")
         assert LABEL_PR_OPENED in github.labels(3)
         assert LABEL_NEEDS_HUMAN in github.labels(4)
         assert "major version bump" in app.state.deps.db.get_issue(4).route_reason.lower()

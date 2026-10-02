@@ -1,8 +1,10 @@
+from dataclasses import replace
+
 from test_pipeline import RecordingActions, make_deps, run_ticks, seed, state
 from test_triage import ScriptedDevin
 
-from app.fix import check_fix
-from app.models import IssueState, SessionInfo, Stage
+from app.fix import check_fix, start_fix
+from app.models import IssueState, RouteAction, RouteDecision, SessionInfo, Stage, TriageResult
 
 
 async def advance_to_fixing(tmp_path, number=1):
@@ -36,6 +38,34 @@ async def test_fix_pr_opened_and_never_archived(tmp_path):
     assert state(deps, 3) is IssueState.PR_OPENED
     assert deps.db.get_issue(3).pr_opened_at is not None
     assert not [sid for sid in deps.devin.archived if sid.startswith("demo-fix-")]
+
+
+async def test_fix_without_trigger_label_is_cancelled_before_session(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 1)
+    issue = deps.github.issues[1]
+    deps.db.transition(1, [IssueState.SEEN], IssueState.TRIAGED, deps.clock())
+    deps.db.transition(1, [IssueState.TRIAGED], IssueState.FIXING, deps.clock())
+    deps.github.issues[1] = replace(
+        issue,
+        labels=tuple(label for label in issue.labels if label != deps.settings.trigger_label),
+    )
+
+    await start_fix(
+        deps,
+        issue,
+        TriageResult(1, ()),
+        RouteDecision(RouteAction.FIX, "reachable"),
+        actions,
+    )
+
+    row = deps.db.get_issue(1)
+    assert row.state is IssueState.CANCELLED
+    assert row.route_reason == "trigger label removed"
+    assert any(event.kind == "cancelled_before_session" for event in deps.db.list_events(1))
+    assert deps.budget.committed() == 0
+    assert deps.devin.requests == []
 
 
 async def test_settled_without_pr_is_needs_human(tmp_path):
