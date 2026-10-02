@@ -1,0 +1,295 @@
+{
+  "app": {
+    "name": "Forkfix",
+    "name_long": "Forkfix operations",
+    "description": "Shows what the security-fix pipeline is doing to each issue, what needs a human, and what it cost."
+  },
+  "nav": {
+    "skip": "Skip to content",
+    "label": "Main",
+    "overview": "Overview",
+    "pipeline": "Pipeline",
+    "sessions": "Sessions",
+    "cost": "Cost"
+  },
+  "demo": {
+    "badge": "Demo data",
+    "definition": "DEMO mode: GitHub and Devin are simulated and only the seeded issues are shown. Nothing here is real activity."
+  },
+  "lang": {
+    "label": "Language",
+    "en": "EN",
+    "es": "ES",
+    "en_name": "English",
+    "es_name": "Español",
+    "separator": "|"
+  },
+  "actions": {
+    "sweep": "Run sweep now"
+  },
+  "live": {
+    "rendered": "Data from {time}"
+  },
+  "common": {
+    "issue_number": "#{number}",
+    "none": "—",
+    "definition": "Show definition",
+    "colon": ":",
+    "period": "."
+  },
+  "links": {
+    "open_on_github": "Open issue on GitHub",
+    "issue": "Issue #{number}",
+    "pr": "PR #{number}",
+    "session_triage": "Triage session",
+    "session_fix": "Fix session"
+  },
+  "overview": {
+    "title": "Overview",
+    "heading": "Security fixes for {repo}",
+    "issues_seen": "Issues seen",
+    "prs_opened": "PRs opened",
+    "needs_human": "Needs a human",
+    "automation_rate": "Automation rate",
+    "automation_rate_definition": "Share of finished issues the pipeline closed out on its own: (PRs opened + not reachable) ÷ (PRs opened + not reachable + needs a human). Issues still in progress, with errors or cancelled are left out.",
+    "median_time_to_pr": "Median time to PR",
+    "median_time_to_pr_definition": "Median time from when an issue was first seen to when its fix PR was opened, across issues with a PR.",
+    "acu_committed": "ACUs committed",
+    "acu_of": "{committed} of {ceiling}",
+    "acu_definition": "Each Devin session reserves its ACU cap against the ceiling before it starts. Committed is the sum of those reservations, not metered use.",
+    "acu_left": "{remaining} left before new sessions wait for budget",
+    "acu_full": "Ceiling reached: new sessions wait until you raise it or reservations are released",
+    "attention_heading": "Needs a human ({count})",
+    "error_hint": "The pipeline stopped with an error and won't retry this issue on its own. Check the history, then handle the issue by hand on GitHub.",
+    "attention_empty": "Nothing needs a human right now.",
+    "pipeline_heading": "Pipeline",
+    "pipeline_details": "See verdicts and links",
+    "empty_title": "No issues yet",
+    "empty_body": "Add the {label} label to a Dependabot issue in {repo}, then run a sweep to pick it up."
+  },
+  "sync": {
+    "heading": "Upstream sync",
+    "off": "Upstream sync is off. Set UPSTREAM_SYNC_ENABLED to turn it on.",
+    "never": "Upstream sync is on but hasn't run yet.",
+    "last": "Last run: {outcome}, {time}.",
+    "outcome": {
+      "merged": "merged upstream changes",
+      "conflict": "stopped on a merge conflict",
+      "none": "already up to date",
+      "error": "failed"
+    },
+    "changelog_pr": "Changelog PR",
+    "conflict_issue": "Conflict issue #{number}"
+  },
+  "stage": {
+    "seen": "Seen",
+    "triage": "Triage",
+    "route": "Route",
+    "fix": "Fix",
+    "pr": "PR"
+  },
+  "track": {
+    "label": "Pipeline stages for issue #{number}",
+    "done": "Done",
+    "active": "Running",
+    "waiting": "Budget wait",
+    "stopped": "Needs human",
+    "failed": "Failed",
+    "skipped": "Skipped",
+    "pending": "Not started"
+  },
+  "state": {
+    "seen": "Seen",
+    "queued_budget": "Waiting for budget",
+    "triaging": "Triaging",
+    "triaged": "Triaged",
+    "fixing": "Fixing",
+    "pr_opened": "PR opened",
+    "needs_human": "Needs a human",
+    "not_reachable": "Not reachable",
+    "error": "Error",
+    "cancelled": "Cancelled"
+  },
+  "verdict": {
+    "REACHABLE": "Reachable",
+    "NOT_REACHABLE": "Not reachable",
+    "UNKNOWN": "Unknown"
+  },
+  "verdicts": {
+    "summary": "{reachable} of {total} CVEs reachable"
+  },
+  "confidence": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "missing": "Not given (counts as low)"
+  },
+  "route": {
+    "fix": "Routed to fix",
+    "needs_human": "Routed to a human",
+    "close_low_priority": "Closed as low priority"
+  },
+  "reason": {
+    "major_bump": "Major version bump {old} → {new}; a person should review it.",
+    "reachable": "Reachable with medium or high confidence: {ids}.",
+    "all_not_reachable": "No listed CVE is reachable.",
+    "none_qualifying": "No CVE is reachable with medium or high confidence.",
+    "bump_unknown": "Couldn't confirm the bump isn't a major version.",
+    "no_triage": "Triage didn't return a usable result.",
+    "no_cve_ids": "The issue lists no CVE IDs, so triage can't be checked.",
+    "triage_opened_pr": "The triage session opened a PR, which it must not do.",
+    "issue_closed": "The issue was closed.",
+    "label_removed": "The trigger label was removed.",
+    "create_unknown": "It's unclear whether the session started; its ACU reservation is kept until someone checks.",
+    "fix_no_pr": "The fix session finished without opening a PR.",
+    "suspended": "The {stage} session was suspended ({detail}).",
+    "errored": "The {stage} session ended with an error.",
+    "timed_out": "The {stage} session didn't finish within {limit} s.",
+    "stopped": "The {stage} session stopped: {detail}.",
+    "triage_unusable": "Triage output couldn't be used: {detail}."
+  },
+  "bump": {
+    "major": "major bump",
+    "minor": "minor bump",
+    "patch": "patch bump",
+    "unknown": "bump size unknown"
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "heading": "Pipeline",
+    "subheading": "One row per issue: where it is, what triage found, and why it was routed that way.",
+    "version_change": "{old} → {new}"
+  },
+  "issue": {
+    "title": "Issue #{number}",
+    "missing_title": "This issue isn't tracked",
+    "missing_body": "Forkfix hasn't seen this issue. Check the number, or add the trigger label on GitHub and run a sweep.",
+    "back": "Back to the pipeline",
+    "timeline": "Stage timeline",
+    "last_error": "Last error",
+    "evidence": "Triage evidence",
+    "col_cve": "CVE",
+    "col_verdict": "Verdict",
+    "col_confidence": "Confidence",
+    "col_evidence": "Evidence",
+    "no_evidence": "No file:line evidence given.",
+    "gates": "Gates",
+    "no_gates": "none",
+    "default_on": "reachable in a default install",
+    "default_off": "not reachable in a default install",
+    "evidence_pending": "Evidence appears here when triage finishes.",
+    "evidence_missing": "Triage didn't return evidence for this issue. Open the triage session to see what happened.",
+    "history": "History",
+    "show_raw": "Show raw log",
+    "history_empty": "No events recorded for this issue yet."
+  },
+  "sessions": {
+    "title": "Sessions",
+    "heading": "Devin sessions",
+    "subheading": "Every session the pipeline started, newest first, with its ACU cap and what the plan reported.",
+    "col_session": "Session",
+    "col_issue": "Issue",
+    "col_stage": "Stage",
+    "col_mode": "Devin mode",
+    "col_cap": "ACU cap",
+    "col_consumed": "ACUs consumed",
+    "col_status": "Status",
+    "col_duration": "Duration",
+    "org_default": "org default",
+    "not_reported": "not reported by plan",
+    "not_yet": "not reported yet",
+    "empty_title": "No sessions yet",
+    "empty_body": "Sessions start after the sweep picks up a labeled issue. Run a sweep to start one."
+  },
+  "session_status": {
+    "running": "Running",
+    "blocked": "Blocked",
+    "suspended": "Suspended",
+    "error": "Error",
+    "finished": "Finished",
+    "expired": "Expired"
+  },
+  "units": {
+    "seconds": "{s} s",
+    "minutes_seconds": "{m} min {s} s",
+    "hours_minutes": "{h} h {m} min",
+    "acus": "{value} ACUs",
+    "percent": "{value}%"
+  },
+  "formats": {
+    "datetime": "{month} {day}, {time} UTC"
+  },
+  "months": "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
+  "cost": {
+    "title": "Cost",
+    "heading": "Cost",
+    "subheading": "ACUs reserved against the ceiling, in total and per issue.",
+    "committed_heading": "Committed ACUs against the ceiling",
+    "committed_question": "How close is the pipeline to its ACU ceiling?",
+    "chart_desc": "{count} active reservations total {committed} ACUs against a ceiling of {ceiling} ACUs.",
+    "ceiling_label": "Ceiling {ceiling} ACUs",
+    "committed_label": "Committed {committed} ACUs",
+    "short_history": "Reservations so far: {count}, all within {span}. That's too close together for a time chart, so each one is shown in order.",
+    "unused": "Unused",
+    "step": "#{number} {stage}: {cap} ACUs",
+    "no_reservations": "No ACUs reserved yet. Reservations appear when a session starts.",
+    "cancelled_note": "Cancelled reservations not shown: {count}. The ledger doesn't record when they were released.",
+    "per_issue_heading": "ACUs committed per issue",
+    "per_issue_question": "Which issues used the budget?",
+    "split": "triage {triage}, fix {fix}",
+    "metered_heading": "Metered ACUs",
+    "metered_total": "Devin reported {value} ACUs consumed across all sessions.",
+    "metered_none": "{count} finished sessions report 0 metered ACUs. Treat committed ACUs above as the most it can have cost.",
+    "metered_waiting": "No session has finished yet."
+  },
+  "event": {
+    "sweep": "Found by the sweep.",
+    "triage_started": "Triage started in session {session}.",
+    "triaged": "Triage finished.",
+    "triaged_counts": "Triage finished: {reachable} of {total} CVEs reachable.",
+    "routed": "Routed: {detail}.",
+    "routed_fix": "Routed to fix. {reason}",
+    "routed_needs_human": "Routed to a human. {reason}",
+    "routed_close_low_priority": "Closed as low priority. {reason}",
+    "fix_started": "Fix started in session {session}.",
+    "pr_opened": "Fix opened {prs}.",
+    "fix_no_pr": "The fix session finished without a PR.",
+    "queued_budget": "Waiting for budget: the {stage} cap of {cap} ACUs doesn't fit under the ceiling.",
+    "queued_budget_commented": "Posted a budget-wait comment on the issue ({committed} of {ceiling} ACUs committed).",
+    "queued_budget_comment_failed": "Couldn't post the budget-wait comment ({committed} of {ceiling} ACUs committed).",
+    "queued_budget_cleared": "Budget wait cleared.",
+    "cancelled_before_session": "Cancelled before a session started.",
+    "triage_create_failed": "Couldn't start the triage session.",
+    "fix_create_failed": "Couldn't start the fix session.",
+    "triage_create_ambiguous": "Unclear whether the triage session started; checking before retrying.",
+    "fix_create_ambiguous": "Unclear whether the fix session started; checking before retrying.",
+    "devin_poll_failed": "Couldn't reach Devin to check the session. Retrying.",
+    "pipeline_error": "The pipeline stopped with an error.",
+    "readopted_after_restart": "Picked up session {session} again after a restart.",
+    "create_ambiguous_after_restart": "After a restart, it was unclear whether a session had started.",
+    "recovered_after_restart": "Recovered after a restart.",
+    "github_error": "A GitHub request failed.",
+    "action_failed": "A follow-up action failed.",
+    "archive_failed": "Couldn't archive the session.",
+    "nudge_failed": "Couldn't nudge the session.",
+    "nudged": "Nudged session {session} to finish.",
+    "escalated": "Escalated to a human. {reason}",
+    "triage_rejected": "Triage was rejected because it opened a PR.",
+    "triage_suspended": "Triage was suspended. {reason}",
+    "triage_invalid": "Triage output couldn't be used. {reason}",
+    "fallback": "Event: {kind}.",
+    "webhook_accepted": "Label added on GitHub; the webhook was accepted."
+  },
+  "js": {
+    "updated": "Updated {ago}",
+    "paused": "Updates paused while this tab is hidden",
+    "offline": "Can't reach the server. Showing data from {time}; retrying every {seconds} s.",
+    "sweep": "Run sweep now",
+    "sweep_running": "Running sweep…",
+    "sweep_forbidden": "The sweep only runs from an allowed local address. Run it from the machine that hosts Forkfix.",
+    "sweep_failed": "The sweep couldn't reach GitHub. Try again in a minute.",
+    "sweep_offline": "Can't reach the server. Check that Forkfix is running, then try again.",
+    "sweep_done_one": "Sweep finished: 1 new issue.",
+    "sweep_done_other": "Sweep finished: {count} new issues ({found} labeled in total)."
+  }
+}

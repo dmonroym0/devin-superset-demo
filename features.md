@@ -73,6 +73,27 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 |---|---|---|---|---|
 | Upstream sync + FORK_CHANGELOG.md via PR | verified | `app/config.py`, `app/models.py`, `app/interfaces.py`, `app/github_client.py`, `app/fake_github.py`, `app/demo/upstream.json`, `app/changelog.py`, `app/db.py`, `app/upstream_sync.py`, `app/request_security.py`, `app/sweep.py`, `app/main.py`, `app/metrics.py`, `app/dashboard.py`, `app/templates/board.html`, `README.md`, `.env.example`, `tests/test_changelog.py`, `tests/test_github_client.py`, `tests/test_upstream_sync.py`, `tests/test_e2e_demo.py` | Run `pytest -q tests/test_changelog.py tests/test_github_client.py tests/test_upstream_sync.py tests/test_e2e_demo.py`. Key coverage: `test_render_section_groups_conventional_types_in_order`, `test_render_section_flags_incomplete_dependency_file_list`, `test_compare_paginates_all_commits_and_keeps_first_page_files`, `test_compare_file_cap_marks_rendered_dependency_list_incomplete`, `test_create_changelog_pr_updates_existing_file_with_contents_sha`, `test_create_changelog_pr_retry_skips_put_when_branch_content_matches`, `test_get_file_fetches_git_blob_for_non_base64_contents`, `test_get_file_rejects_failed_or_unsupported_blob_response`, `test_upstream_merge_creates_changelog_pr_and_advances_sha`, `test_conflict_creates_one_issue_while_existing_issue_is_open`, `test_upstream_cursor_is_scoped_to_configured_branch`, `test_pending_changelog_state_is_scoped_to_branch`, `test_conflict_issue_number_is_scoped_to_branch`, `test_blob_load_failure_does_not_open_pr_or_advance_cursor`, `test_pull_request_body_flags_incomplete_dependency_file_list`, `test_sync_endpoint_rejects_forwarded_for`, `test_sync_endpoint_returns_busy_when_background_sync_holds_lock`, `test_merge_upstream_error_returns_502`, `test_conflict_reuses_open_matching_issue_from_github`, `test_demo_upstream_scenario_has_eight_representative_commits`, `test_demo_end_to_end` verifies `/metrics.json`, and `test_changelog_pr_url_stays_visible_after_noop_sync_and_is_branch_scoped` checks the sticky branch-scoped PR URL. | R9, J |
 
+## Dashboard redesign + localization (UI session)
+
+Requirement IDs: UI1–UI5 are the five telemetry views, UI6 design system, UI7 live updates, UI8 offline assets, UI9 accessibility/responsive, UI10 installable app, UI11 localization, UI12 DeepWiki config.
+
+| Name | Status | Files | How to see it | Requirement |
+|---|---|---|---|---|
+| Overview: stats, automation-rate definition, ACU meter, needs-a-human list | verified | app/dashboard.py, app/templates/overview.html, app/templates/_macros.html | open http://127.0.0.1:8000/; `pytest tests/test_dashboard_views.py` | UI1 |
+| Pipeline view: per-issue stage track, CVE verdicts, route + reason, links | verified | app/dashboard.py, app/templates/pipeline.html, app/templates/_macros.html | open http://127.0.0.1:8000/pipeline | UI2 |
+| Issue detail: stage timeline with durations, triage evidence, history as sentences, raw log toggle | verified | app/dashboard.py, app/templates/issue.html | open http://127.0.0.1:8000/issues/3 | UI3 |
+| Sessions view ("not reported by plan" for 0 metered ACUs) | verified | app/dashboard.py, app/templates/sessions.html | open http://127.0.0.1:8000/sessions; `pytest tests/test_dashboard_views.py` | UI4 |
+| Cost view: committed vs ceiling (no invented history), ACUs per issue | verified | app/dashboard.py, app/templates/cost.html | open http://127.0.0.1:8000/cost | UI5 |
+| Additive metrics fields (stage_track, normalized CVEs, reservations, by_issue, session finished/duration) | verified | app/metrics.py | `pytest tests/test_metrics.py tests/test_metrics_additive.py` | UI1–UI5 |
+| Primer tokens, IBM Plex (vendored woff2 + OFL), light/dark | verified | app/static/app.css, app/static/fonts/, app/static/LICENSE-primer-primitives.txt | open the board with the OS in light and dark mode | UI6 |
+| In-place polling of /metrics.json, paused while hidden | verified | app/static/app.js | open the board, run `python scripts/simulate_webhook.py --issue 1`, watch it update without a reload | UI7 |
+| Same-origin assets only (no CDNs) | verified | app/templates/base.html, app/static/ | `pytest tests/test_dashboard_views.py`; Playwright network log in the PR | UI8 |
+| Keyboard focus, reduced motion, 1440px and 390px layouts | verified | app/static/app.css, app/templates/ | axe + screenshots in the PR | UI9 |
+| Installable web app (manifest + icons) | verified | app/dashboard.py, app/static/icons/ | Chrome or Edge: Install app from the address bar | UI10 |
+| EN/ES catalogs, Accept-Language default, cookie, `<html lang>`, locale formatting | verified | app/i18n/, app/templates/base.html | `pytest tests/test_i18n.py`; click EN / ES in the header | UI11 |
+| Spanish README + glossary | built | README.es.md, docs/es/GLOSSARY.md | read them | UI11 |
+| DeepWiki config with experimental Spanish section | built | .devin/wiki.json | regenerate the wiki and check the "Documentación en español" pages | UI12 |
+
 ## Release checks
 
 | Name | Status | Files | How to see it | Requirement |

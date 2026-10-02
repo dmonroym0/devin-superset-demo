@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.db import SessionRow
+from app.i18n import flatten
 from app.main import create_app
 from app.models import Issue, IssueState, Stage
 
@@ -75,34 +79,38 @@ def test_dashboard_renders_database_rows_safely(test_settings, fake_github, fake
         app.state.deps.budget.reserve(101, Stage.FIX, 15, 1_699_999_960)
         db.add_event(101, "session_started", "Session started", 1_699_999_980)
 
-        response = client.get("/")
+        overview = client.get("/")
+        issue = client.get("/issues/101")
+        other_issue = client.get("/issues/103")
+        sessions = client.get("/sessions")
 
-    assert response.status_code == 200
-    assert "DEMO" in response.text
-    assert "Issues seen" in response.text
-    assert "PR opened" in response.text
-    assert "Needs human" in response.text
-    assert "Not reachable" in response.text
-    assert "Automation rate" in response.text
-    assert "Median time to PR" in response.text
-    assert "Upstream sync" in response.text
-    assert "42s" in response.text
-    assert "runtime ceiling across all issues" in response.text
-    assert "https://github.com/dmonroym0/superset/issues/101" in response.text
-    assert 'href="https://github.com/other/repo/pull/202"' not in response.text
-    assert "https://github.com/other/repo/pull/202" in response.text
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
-    assert "<script>alert(1)" not in response.text
-    assert "org default" in response.text
-    assert ">fast<" in response.text
-    assert "ACUs consumed" in response.text
-    assert "2.5" in response.text
-    assert "session-default" in response.text
-    assert "session-fast" in response.text
-    assert "javascript:alert(1)" not in response.text
-    assert 'href="javascript:' not in response.text
-    assert "session_started" in response.text
-    assert '<meta http-equiv="refresh" content="5">' in response.text
-    assert "<script" not in response.text
-    assert "http://" not in response.text
-    assert "cdn" not in response.text.lower()
+    en = flatten(json.loads((Path(__file__).parents[1] / "app/i18n/en.json").read_text()))
+    assert overview.status_code == issue.status_code == other_issue.status_code == sessions.status_code == 200
+    assert en["demo.badge"] in overview.text
+    for key in (
+        "overview.issues_seen",
+        "overview.prs_opened",
+        "overview.needs_human",
+        "overview.automation_rate",
+        "overview.median_time_to_pr",
+        "overview.acu_definition",
+        "overview.pipeline_heading",
+        "sync.heading",
+    ):
+        assert en[key] in overview.text
+    assert en["units.seconds"].format(s=42) in overview.text
+    assert "https://github.com/dmonroym0/superset/issues/101" in issue.text
+    assert 'href="https://github.com/dmonroym0/superset/pull/201"' in issue.text
+    assert 'href="https://github.com/other/repo/pull/202"' not in other_issue.text
+    assert "https://github.com/other/repo/pull/202" not in other_issue.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in overview.text
+    assert "<script>alert(1)" not in overview.text
+    assert en["sessions.org_default"] in sessions.text
+    assert ">fast<" in sessions.text
+    assert en["sessions.col_consumed"] in sessions.text
+    assert "2.5" in sessions.text
+    assert "session-default" in sessions.text
+    assert "session-fast" in sessions.text
+    assert "javascript:alert(1)" not in sessions.text
+    assert 'href="javascript:' not in sessions.text
+    assert en["event.fallback"].format(kind="session_started") in issue.text

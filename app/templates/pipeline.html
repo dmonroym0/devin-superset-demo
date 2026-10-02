@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div data-region="pipeline">
+<div class="page-head">
+  <h1>{{ t('pipeline.heading') }}</h1>
+  <p>{{ t('pipeline.subheading') }}</p>
+</div>
+{% if issues %}
+<ol class="runs">
+  {% for issue in issues %}
+  <li class="run">
+    <div class="run-title">
+      <span class="num">{{ t('common.issue_number', number=issue.number) }}</span>
+      <a class="title" href="{{ issue.detail_url }}">{{ issue.title }}</a>
+      {% if issue.package %}<p class="pkg"><span class="mono">{{ issue.package }}</span> {{ t('pipeline.version_change', old=issue.current_version or t('common.none'), new=issue.fixed_version or t('common.none')) }}{% if issue.bump_kind %} · {{ t('bump.' ~ issue.bump_kind) }}{% endif %}</p>{% endif %}
+    </div>
+    {{ ui.track(t, issue) }}
+    <div class="run-outcome">
+      {{ ui.chip(issue.chip) }}
+      {% if issue.cve_views %}
+      <div class="verdicts">
+        {% for cve in issue.cve_views %}<span class="chip tone-{{ cve.tone }}"><span class="mono">{{ cve.cve_id }}</span> {{ cve.verdict_label }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      {% if issue.route_action or issue.reason %}<p class="reason">{% if issue.route_action %}{{ issue.route_action }}{% if issue.reason %}{{ t('common.colon') }} {% endif %}{% endif %}{{ ui.reason(issue.reason) }}</p>{% endif %}
+      <p class="run-links">
+        <a href="{{ issue.url }}">{{ t('links.issue', number=issue.number) }}</a>
+        {% if issue.safe_pr_url %}<a href="{{ issue.safe_pr_url }}">{{ t('links.pr', number=issue.pr_number) }}</a>{% endif %}
+        {% for stage, session in issue.sessions.items() %}{% if session.safe_url %}<a href="{{ session.safe_url }}">{{ t('links.session_' ~ stage) }}</a>{% endif %}{% endfor %}
+      </p>
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="empty">
+  <strong>{{ t('overview.empty_title') }}</strong>
+  <p>{{ t('overview.empty_body', label=trigger_label, repo=fork_repo) }}</p>
+</div>
+{% endif %}
+</div>
+{% endblock %}

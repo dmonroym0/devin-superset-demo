@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div data-region="cost">
+<div class="page-head">
+  <h1>{{ t('cost.heading') }}</h1>
+  <p>{{ t('cost.subheading') }}</p>
+</div>
+
+<section class="section" aria-labelledby="committed-heading">
+  <div class="section-head">
+    <h2 id="committed-heading">{{ t('cost.committed_heading') }}</h2>
+    <p>{{ t('cost.committed_question') }}</p>
+  </div>
+  {% set c = ledger.chart %}
+  {% if c %}
+  <svg class="chart" viewBox="0 0 {{ c.width }} {{ c.height }}" role="img" aria-labelledby="committed-heading committed-desc">
+    <desc id="committed-desc">{{ t('cost.chart_desc', committed=t.acus(c.total), ceiling=t.acus(metrics.acu.ceiling), count=ledger.active | length) }}</desc>
+    <line class="axis" x1="{{ c.left }}" x2="{{ c.end_x }}" y1="{{ c.zero_y }}" y2="{{ c.zero_y }}"/>
+    <line class="grid" x1="{{ c.left }}" x2="{{ c.end_x }}" y1="{{ c.mid_y }}" y2="{{ c.mid_y }}"/>
+    <text x="{{ c.left - 8 }}" y="{{ c.zero_y + 4 }}" text-anchor="end">{{ t('units.acus', value='0') }}</text>
+    <text x="{{ c.left - 8 }}" y="{{ c.mid_y + 4 }}" text-anchor="end">{{ t.acus(c.mid_value) }}</text>
+    <line class="ceiling" x1="{{ c.left }}" x2="{{ c.end_x }}" y1="{{ c.ceiling_y }}" y2="{{ c.ceiling_y }}"/>
+    <text class="label-strong" x="{{ c.end_x + 8 }}" y="{{ c.ceiling_y + 4 }}">{{ t('cost.ceiling_label', ceiling=t.acus(metrics.acu.ceiling)) }}</text>
+    <path class="line" d="{{ c.path }}"/>
+    {% for p in c.points %}<circle class="point" cx="{{ p.x }}" cy="{{ p.y }}" r="3"/>{% endfor %}
+    <text class="label-strong" x="{{ c.end_x + 8 }}" y="{{ c.end_y + 4 }}">{{ t('cost.committed_label', committed=t.acus(c.total)) }}</text>
+    <text x="{{ c.left }}" y="{{ c.height - 8 }}"><tspan>{{ t.datetime(c.start) }}</tspan></text>
+    <text x="{{ c.end_x }}" y="{{ c.height - 8 }}" text-anchor="end">{{ t.datetime(c.end) }}</text>
+  </svg>
+  {% elif ledger.active %}
+  <p class="prose muted" style="margin-bottom: 12px">{{ t('cost.short_history', count=ledger.active | length, span=t.duration(ledger.span_s)) }}</p>
+  <div class="key" aria-hidden="true"><span><i class="bar-seg triage"></i>{{ t('stage.triage') }}</span><span><i class="bar-seg fix"></i>{{ t('stage.fix') }}</span><span><i style="background: var(--bg-muted); box-shadow: inset 0 0 0 1px var(--border)"></i>{{ t('cost.unused') }}</span></div>
+  <div class="stack" role="img" aria-label="{{ t('cost.chart_desc', committed=t.acus(metrics.acu.committed), ceiling=t.acus(metrics.acu.ceiling), count=ledger.active | length) }}">
+    {% for item in ledger.active %}<span class="{{ item.stage }}" style="width: {{ '%.2f' | format(item.cap / metrics.acu.ceiling * 100) }}%" title="{{ t('cost.step', number=item.issue_number, stage=t('stage.' ~ item.stage), cap=t.acus(item.cap)) }}"></span>{% endfor %}
+  </div>
+  <p class="small muted" style="margin-top: 4px">{{ t('overview.acu_of', committed=t.acus(metrics.acu.committed), ceiling=t.acus(metrics.acu.ceiling)) }}</p>
+  <ol class="steps">
+    {% for item in ledger.active %}<li><time datetime="{{ item.created_at }}">{{ t.datetime(item.created_at) }}</time> · {{ t('cost.step', number=item.issue_number, stage=t('stage.' ~ item.stage), cap=t.acus(item.cap)) }}</li>{% endfor %}
+  </ol>
+  {% else %}
+  <p class="empty">{{ t('cost.no_reservations') }}</p>
+  {% endif %}
+  {% if ledger.cancelled %}<p class="small muted" style="margin-top: 8px">{{ t('cost.cancelled_note', count=ledger.cancelled) }}</p>{% endif %}
+</section>
+
+<section class="section" aria-labelledby="per-issue-heading">
+  <div class="section-head">
+    <h2 id="per-issue-heading">{{ t('cost.per_issue_heading') }}</h2>
+    <p>{{ t('cost.per_issue_question') }}</p>
+  </div>
+  {% if per_issue %}
+  <div class="key" aria-hidden="true"><span><i class="bar-seg triage"></i>{{ t('stage.triage') }}</span><span><i class="bar-seg fix"></i>{{ t('stage.fix') }}</span></div>
+  <ul class="bars">
+    {% for row in per_issue %}
+    <li>
+      <a href="/issues/{{ row.number }}">{{ t('common.issue_number', number=row.number) }}{% if row.issue and row.issue.package %} <span class="mono">{{ row.issue.package }}</span>{% endif %}</a>
+      <span class="bar-track">
+        {% if row.triage %}<span class="bar-seg triage" style="width: {{ '%.2f' | format(row.triage / scale * 70) }}%"></span>{% endif %}
+        {% if row.fix %}<span class="bar-seg fix" style="width: {{ '%.2f' | format(row.fix / scale * 70) }}%"></span>{% endif %}
+        <span class="bar-value"><strong>{{ t('units.acus', value=t.acus(row.total)) }}</strong>{% if row.triage and row.fix %} · {{ t('cost.split', triage=t.acus(row.triage), fix=t.acus(row.fix)) }}{% endif %}</span>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">{{ t('cost.no_reservations') }}</p>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="metered-heading">
+  <div class="section-head"><h2 id="metered-heading">{{ t('cost.metered_heading') }}</h2></div>
+  <p class="prose">{% if metered_reported %}{{ t('cost.metered_total', value=t.acus(metrics.acu.consumed_metered)) }}{% elif finished_count %}<span class="note">{{ t('sessions.not_reported') }}</span>{{ t('common.period') }} {{ t('cost.metered_none', count=finished_count) }}{% else %}{{ t('cost.metered_waiting') }}{% endif %}</p>
+</section>
+</div>
+{% endblock %}

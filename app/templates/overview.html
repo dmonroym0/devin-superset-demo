@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div data-region="overview">
+<div class="page-head">
+  <h1>{{ t('overview.heading', repo=fork_repo) }}</h1>
+</div>
+
+<dl class="stats">
+  <div class="stat"><dt>{{ t('overview.issues_seen') }}</dt><dd>{{ t.number(metrics.issues.seen) }}</dd></div>
+  <div class="stat{{ ' open' if metrics.issues.pr_opened }}"><dt>{{ t('overview.prs_opened') }}</dt><dd>{{ t.number(metrics.issues.pr_opened) }}</dd></div>
+  <div class="stat{{ ' attention' if metrics.issues.needs_human }}"><dt>{{ t('overview.needs_human') }}</dt><dd>{{ t.number(metrics.issues.needs_human) }}</dd></div>
+  <div class="stat">
+    <dt>{{ t('overview.automation_rate') }} {{ ui.define(t, 'def-automation', t('overview.automation_rate_definition')) }}</dt>
+    <dd>{{ t.percent(metrics.automation_rate) }}</dd>
+  </div>
+  <div class="stat">
+    <dt>{{ t('overview.median_time_to_pr') }} {{ ui.define(t, 'def-median', t('overview.median_time_to_pr_definition')) }}</dt>
+    <dd>{{ t.duration(metrics.median_time_to_pr_s) }}</dd>
+  </div>
+</dl>
+
+{% set level = 'full' if acu_percent >= 100 else 'high' if acu_percent >= 80 else 'ok' %}
+<div class="meter">
+  <div class="meter-label" id="acu-label">
+    <span>{{ t('overview.acu_committed') }}</span>
+    <strong>{{ t('overview.acu_of', committed=t.acus(metrics.acu.committed), ceiling=t.acus(metrics.acu.ceiling)) }}</strong>
+    {{ ui.define(t, 'def-acu', t('overview.acu_definition')) }}
+  </div>
+  <div class="meter-bar" data-level="{{ level }}" role="meter" aria-labelledby="acu-label" aria-valuemin="0" aria-valuemax="{{ metrics.acu.ceiling }}" aria-valuenow="{{ metrics.acu.committed }}" aria-valuetext="{{ t('overview.acu_of', committed=t.acus(metrics.acu.committed), ceiling=t.acus(metrics.acu.ceiling)) }}">
+    <span style="width: {{ '%.1f' | format(acu_percent) }}%"></span>
+  </div>
+  <span class="meter-note">{% if metrics.acu.remaining > 0 %}{{ t('overview.acu_left', remaining=t.acus(metrics.acu.remaining)) }}{% else %}{{ t('overview.acu_full') }}{% endif %}</span>
+</div>
+
+<section class="section" aria-labelledby="attention-heading">
+  <div class="section-head">
+    <h2 id="attention-heading">{{ t('overview.attention_heading', count=t.number(attention | length)) }}</h2>
+  </div>
+  {% if attention %}
+  <ul class="attn">
+    {% for issue in attention %}
+    <li>
+      <span class="num">{{ t('common.issue_number', number=issue.number) }}</span>
+      <a href="{{ issue.detail_url }}">{{ issue.title }}</a>
+      <span class="muted">{% if issue.state == 'error' %}{{ t('overview.error_hint') }}{% else %}{{ ui.reason(issue.reason) }}{% endif %}</span>
+      <a href="{{ issue.url }}">{{ t('links.open_on_github') }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">{{ t('overview.attention_empty') }}</p>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="pipeline-heading">
+  <div class="section-head">
+    <h2 id="pipeline-heading">{{ t('overview.pipeline_heading') }}</h2>
+    {% if issues %}<a href="/pipeline">{{ t('overview.pipeline_details') }}</a>{% endif %}
+  </div>
+  {% if issues %}
+  <ol class="runs">
+    {% for issue in issues %}
+    <li class="run">
+      <div class="run-title">
+        <span class="num">{{ t('common.issue_number', number=issue.number) }}</span>
+        <a class="title" href="{{ issue.detail_url }}">{{ issue.title }}</a>
+      </div>
+      {{ ui.track(t, issue) }}
+      <div class="run-outcome">
+        {{ ui.chip(issue.chip) }}
+        {% if issue.verdict_summary %}<span class="reason">{{ issue.verdict_summary }}</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <div class="empty">
+    <strong>{{ t('overview.empty_title') }}</strong>
+    <p>{{ t('overview.empty_body', label=trigger_label, repo=fork_repo) }}</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="sync-heading">
+  <div class="section-head"><h2 id="sync-heading">{{ t('sync.heading') }}</h2></div>
+  <p class="prose muted">
+  {% set sync = metrics.upstream_sync %}
+  {% if not sync.enabled %}{{ t('sync.off') }}
+  {% elif not sync.last_outcome %}{{ t('sync.never') }}
+  {% else %}{{ t('sync.last', outcome=t('sync.outcome.' ~ sync.last_outcome) if t.has('sync.outcome.' ~ sync.last_outcome) else sync.last_outcome, time=t.datetime(sync.last_at)) }}
+    {% if sync.changelog_pr_url | fork_pr_url %} <a href="{{ sync.changelog_pr_url | fork_pr_url }}">{{ t('sync.changelog_pr') }}</a>{% endif %}
+    {% if sync.conflict_issue_number %} <a href="https://github.com/{{ fork_repo }}/issues/{{ sync.conflict_issue_number }}">{{ t('sync.conflict_issue', number=sync.conflict_issue_number) }}</a>{% endif %}
+  {% endif %}
+  </p>
+</section>
+</div>
+{% endblock %}

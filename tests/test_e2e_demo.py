@@ -5,6 +5,7 @@ import time
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.i18n import Translator
 from app.main import create_app
 from app.models import (
     LABEL_LOW_PRIORITY,
@@ -131,7 +132,7 @@ def test_demo_end_to_end(tmp_path):
         )
 
         assert client.get("/").status_code == 200
-        assert "org default" in client.get("/").text
+        assert Translator("en")("sessions.org_default") in client.get("/sessions").text
         assert client.post("/sweep").status_code == 200
         assert metrics["issues"]["pr_opened"] == 2
         assert metrics["issues"]["needs_human"] == 2

@@ -1,0 +1,55 @@
+{% import "_macros.html" as ui %}
+<!doctype html>
+<html lang="{{ t.html_lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151b23" media="(prefers-color-scheme: dark)">
+  <title>{{ title }} · {{ t('app.name') }}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="preload" href="/static/fonts/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/app.css">
+  <script type="application/json" id="i18n">{{ client_strings | tojson }}</script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-locale="{{ t.intl_locale }}">
+  <a class="skip" href="#main">{{ t('nav.skip') }}</a>
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="/">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="4" cy="10" r="2.5" fill="currentColor"/><circle cx="16" cy="10" r="2.5" fill="currentColor"/><path d="M6.5 10h7" stroke="currentColor" stroke-width="2"/><path d="M10 3.5v3M10 13.5v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>{{ t('app.name') }}</span>
+      </a>
+      {% if is_demo %}
+      <span class="chip demo-badge" title="{{ t('demo.definition') }}">{{ t('demo.badge') }}</span>
+      {% endif %}
+      <nav aria-label="{{ t('nav.label') }}">
+        <ul class="nav">
+          {% for key, href in nav %}
+          <li><a href="{{ href }}"{% if view == key %} aria-current="page"{% endif %}>{{ t('nav.' ~ key) }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      <div class="top-tools">
+        <div class="lang" role="group" aria-label="{{ t('lang.label') }}">
+          {% if t.locale == 'en' %}<span aria-current="true" lang="en">{{ t('lang.en') }}</span>{% else %}<a href="/lang/en?next={{ next }}" lang="en" hreflang="en" aria-label="{{ t('lang.en_name') }}">{{ t('lang.en') }}</a>{% endif %}
+          <span class="sep" aria-hidden="true">{{ t('lang.separator') }}</span>
+          {% if t.locale == 'es' %}<span aria-current="true" lang="es">{{ t('lang.es') }}</span>{% else %}<a href="/lang/es?next={{ next }}" lang="es" hreflang="es" aria-label="{{ t('lang.es_name') }}">{{ t('lang.es') }}</a>{% endif %}
+        </div>
+        <button class="button primary" type="button" data-action="sweep" hidden>{{ t('actions.sweep') }}</button>
+      </div>
+    </div>
+  </header>
+  <main id="main" class="page" tabindex="-1">
+    <div class="status-row">
+      <span class="live" data-live data-generated="{{ metrics.generated_at }}">{{ t('live.rendered', time=t.datetime(metrics.generated_at)) }}</span>
+      <span class="flash" data-flash role="status"></span>
+    </div>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

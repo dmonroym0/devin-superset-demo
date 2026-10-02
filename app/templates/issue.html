@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<div data-region="issue">
+<p class="crumbs"><a href="/pipeline">{{ t('nav.pipeline') }}</a> / {{ t('common.issue_number', number=issue.number if issue else '') }}</p>
+{% if not issue %}
+<div class="empty">
+  <h1>{{ t('issue.missing_title') }}</h1>
+  <p>{{ t('issue.missing_body') }}</p>
+  <p><a href="/pipeline">{{ t('issue.back') }}</a></p>
+</div>
+{% else %}
+<div class="issue-head">
+  <div>
+    <h1>{{ issue.title }}</h1>
+    {% if issue.package %}<p class="issue-meta"><span class="mono">{{ issue.package }}</span> {{ t('pipeline.version_change', old=issue.current_version or t('common.none'), new=issue.fixed_version or t('common.none')) }}{% if issue.bump_kind %} · {{ t('bump.' ~ issue.bump_kind) }}{% endif %}</p>{% endif %}
+  </div>
+  <div class="links">
+    {{ ui.chip(issue.chip) }}
+    <a href="{{ issue.url }}">{{ t('links.issue', number=issue.number) }}</a>
+    {% if issue.safe_pr_url %}<a href="{{ issue.safe_pr_url }}">{{ t('links.pr', number=issue.pr_number) }}</a>{% endif %}
+    {% for stage, session in issue.sessions.items() %}{% if session.safe_url %}<a href="{{ session.safe_url }}">{{ t('links.session_' ~ stage) }}</a>{% endif %}{% endfor %}
+  </div>
+</div>
+
+<section class="section" aria-labelledby="timeline-heading">
+  <div class="section-head"><h2 id="timeline-heading">{{ t('issue.timeline') }}</h2></div>
+  {{ ui.track(t, issue, large=True) }}
+  {% if issue.route_action or issue.reason %}<p class="prose" style="margin-top: 16px">{% if issue.route_action %}<strong>{{ issue.route_action }}</strong>{% if issue.reason %}{{ t('common.colon') }} {% endif %}{% endif %}{{ ui.reason(issue.reason) }}</p>{% endif %}
+  {% if issue.state == 'error' and issue.last_error %}<p class="prose" style="margin-top: 8px"><strong>{{ t('issue.last_error') }}</strong>{{ t('common.colon') }} <span lang="en" class="mono">{{ issue.last_error }}</span></p>{% endif %}
+</section>
+
+<section class="section" aria-labelledby="evidence-heading">
+  <div class="section-head">
+    <h2 id="evidence-heading">{{ t('issue.evidence') }}</h2>
+    {% if issue.caveats %}<p>{% for caveat in issue.caveats %}<span lang="en">{{ caveat }}</span> {% endfor %}</p>{% endif %}
+  </div>
+  {% if issue.cve_views %}
+  <table class="table stacked">
+    <thead><tr><th scope="col">{{ t('issue.col_cve') }}</th><th scope="col">{{ t('issue.col_verdict') }}</th><th scope="col">{{ t('issue.col_confidence') }}</th><th scope="col">{{ t('issue.col_evidence') }}</th></tr></thead>
+    <tbody>
+      {% for cve in issue.cve_views %}
+      <tr>
+        <td data-label="{{ t('issue.col_cve') }}"><span class="mono">{{ cve.cve_id }}</span></td>
+        <td data-label="{{ t('issue.col_verdict') }}"><span class="chip tone-{{ cve.tone }}">{{ cve.verdict_label }}</span></td>
+        <td data-label="{{ t('issue.col_confidence') }}">{{ cve.confidence_label }}</td>
+        <td data-label="{{ t('issue.col_evidence') }}">
+          {% if cve.evidence %}
+          <ul class="evidence">
+            {% for item in cve.evidence %}
+            <li>{% if item.file %}<span class="mono">{{ item.file }}{% if item.line is not none %}:{{ item.line }}{% endif %}</span> {% endif %}<span lang="en">{{ item.description }}</span></li>
+            {% endfor %}
+          </ul>
+          {% else %}<span class="muted">{{ t('issue.no_evidence') }}</span>{% endif %}
+          {% set gates = cve.gating.feature_flags + cve.gating.config_options + cve.gating.required_permissions %}
+          <p class="gates">{{ t('issue.gates') }}{{ t('common.colon') }}
+            {% if gates %}{% for gate in gates %}<span class="mono">{{ gate }}</span>{{ ', ' if not loop.last }}{% endfor %}{% else %}{{ t('issue.no_gates') }}{% endif %}{% if cve.reachable_by_default is true %} · {{ t('issue.default_on') }}{% elif cve.reachable_by_default is false %} · {{ t('issue.default_off') }}{% endif %}
+          </p>
+          {% if cve.notes %}<p class="gates" lang="en">{{ cve.notes }}</p>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">{% if issue.track[1].state in ('pending', 'waiting', 'active') %}{{ t('issue.evidence_pending') }}{% else %}{{ t('issue.evidence_missing') }}{% endif %}</p>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="history-heading">
+  <div class="section-head"><h2 id="history-heading">{{ t('issue.history') }}</h2></div>
+  {% if history %}
+  <ol class="history">
+    {% for item in history %}
+    <li><time datetime="{{ item.at | iso }}">{{ t.datetime(item.at) }}</time><span>{{ item.text }}</span></li>
+    {% endfor %}
+  </ol>
+  <details class="raw" id="raw-log">
+    <summary>{{ t('issue.show_raw') }}</summary>
+    <pre lang="en">{% for item in history %}{{ item.at | iso }}  {{ item.kind }}  {{ item.detail }}
+{% endfor %}</pre>
+  </details>
+  {% else %}
+  <p class="empty">{{ t('issue.history_empty') }}</p>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+{% endblock %}

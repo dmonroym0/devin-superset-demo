@@ -63,7 +63,7 @@ def test_health_metrics_labels_and_lifecycle(fake_github, fake_devin, test_setti
             "cancelled",
             "error",
         }
-        assert set(payload["acu"]) == {"committed", "ceiling", "remaining", "consumed_metered"}
+        assert {"committed", "ceiling", "remaining", "consumed_metered"} <= set(payload["acu"])
 
     assert fake_github.ensure_labels_calls == [MANAGED_LABELS]
     assert background_cancelled.wait(timeout=1)
@@ -235,9 +235,9 @@ async def test_startup_readopts_attached_triage_session_and_processes_it(test_se
             if session["session_id"] == existing_session.session_id
         )
         assert adopted_metric["url"] is None
-        board = client.get("/")
-        assert board.status_code == 200
-        assert existing_session.session_id in board.text
+        sessions = client.get("/sessions")
+        assert sessions.status_code == 200
+        assert existing_session.session_id in sessions.text
 
         for _ in range(8):
             await tick(deps, app.state.issue_actions)

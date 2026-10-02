@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div data-region="sessions">
+<div class="page-head">
+  <h1>{{ t('sessions.heading') }}</h1>
+  <p>{{ t('sessions.subheading') }}</p>
+</div>
+{% if rows %}
+<table class="table stacked">
+  <thead>
+    <tr>
+      <th scope="col">{{ t('sessions.col_session') }}</th>
+      <th scope="col">{{ t('sessions.col_issue') }}</th>
+      <th scope="col">{{ t('sessions.col_stage') }}</th>
+      <th scope="col">{{ t('sessions.col_mode') }}</th>
+      <th scope="col" class="numeric">{{ t('sessions.col_cap') }}</th>
+      <th scope="col" class="numeric">{{ t('sessions.col_consumed') }}</th>
+      <th scope="col">{{ t('sessions.col_status') }}</th>
+      <th scope="col" class="numeric">{{ t('sessions.col_duration') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td data-label="{{ t('sessions.col_session') }}">{% if row.safe_url %}<a class="mono" href="{{ row.safe_url }}">{{ row.session_id }}</a>{% else %}<span class="mono">{{ row.session_id }}</span>{% endif %}</td>
+      <td data-label="{{ t('sessions.col_issue') }}"><a href="/issues/{{ row.issue_number }}">{{ t('common.issue_number', number=row.issue_number) }}</a></td>
+      <td data-label="{{ t('sessions.col_stage') }}">{{ t('stage.' ~ row.stage) }}</td>
+      <td data-label="{{ t('sessions.col_mode') }}">{% if row.devin_mode is not none %}<span class="mono">{{ row.devin_mode }}</span>{% else %}<span class="muted">{{ t('sessions.org_default') }}</span>{% endif %}</td>
+      <td data-label="{{ t('sessions.col_cap') }}" class="numeric">{{ t('units.acus', value=t.acus(row.max_acu_limit)) }}</td>
+      <td data-label="{{ t('sessions.col_consumed') }}" class="numeric">{% if row.consumed.note %}<span class="note">{{ row.consumed.text }}</span>{% else %}{{ t('units.acus', value=row.consumed.text) }}{% endif %}</td>
+      <td data-label="{{ t('sessions.col_status') }}">{{ ui.chip(row.status_view) }}</td>
+      <td data-label="{{ t('sessions.col_duration') }}" class="numeric">{{ row.duration }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <strong>{{ t('sessions.empty_title') }}</strong>
+  <p>{{ t('sessions.empty_body') }}</p>
+</div>
+{% endif %}
+</div>
+{% endblock %}
