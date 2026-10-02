@@ -305,9 +305,8 @@ def test_startup_rejects_database_claimed_by_another_mode(tmp_path):
     )
     live_app.state.deps.background.clear()
 
-    with pytest.raises(Exception) as error:
-        with TestClient(live_app):
-            pass
+    with pytest.raises(Exception) as error, TestClient(live_app):
+        pass
 
     assert type(error.value).__name__ == "DatabaseModeMismatch"
     assert str(error.value) == (

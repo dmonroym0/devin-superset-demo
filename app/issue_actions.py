@@ -10,13 +10,13 @@ from app.db import Database
 from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.models import (
+    FORK_REPO,
     LABEL_IN_PROGRESS,
     LABEL_LOW_PRIORITY,
     LABEL_NEEDS_HUMAN,
     LABEL_PR_OPENED,
     LABEL_QUEUED_BUDGET,
     LABEL_TRIAGE_REJECTED,
-    FORK_REPO,
     RouteAction,
     RouteDecision,
     TriageResult,
@@ -60,9 +60,7 @@ def render_triage_comment(
     findings = (*decision.qualifying, *decision.others)
     lines = ["### devin-superset-demo triage", "", route, ""]
     if decision.unexpected:
-        lines.append(
-            f"**Ignored (not listed in the issue):** {_escape(', '.join(decision.unexpected))}"
-        )
+        lines.append(f"**Ignored (not listed in the issue):** {_escape(', '.join(decision.unexpected))}")
     if findings:
         lines.extend(
             [
@@ -158,9 +156,7 @@ async def apply_route(
 
 
 async def mark_pr_opened(deps: Deps, number: int, pr_urls: Sequence[str]) -> None:
-    urls = "\n".join(
-        f"- <{url}>" if is_fork_pr_url(url) else "- (unsafe URL omitted)" for url in pr_urls
-    )
+    urls = "\n".join(f"- <{url}>" if is_fork_pr_url(url) else "- (unsafe URL omitted)" for url in pr_urls)
     body = f"{urls}\n\nOpened, not done: CI and review continue in the Devin session."
     await _comment(deps, number, body)
     await _add_labels(deps, number, [LABEL_PR_OPENED])

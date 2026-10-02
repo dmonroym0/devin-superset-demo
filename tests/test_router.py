@@ -119,25 +119,19 @@ def test_cve_missing_from_result_is_added_as_unknown_low():
 
 
 def test_unlisted_reachable_cve_does_not_route_to_fix():
-    facts = IssueFacts(
-        "pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",)
-    )
+    facts = IssueFacts("pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",))
     decision = route(
         facts,
         result(cve("CVE-2026-9999", Verdict.REACHABLE, Confidence.HIGH)),
     )
 
     assert decision.action is RouteAction.NEEDS_HUMAN
-    assert [(item.cve_id, item.verdict) for item in decision.others] == [
-        ("CVE-2026-1111", Verdict.UNKNOWN)
-    ]
+    assert [(item.cve_id, item.verdict) for item in decision.others] == [("CVE-2026-1111", Verdict.UNKNOWN)]
     assert decision.unexpected == ("CVE-2026-9999",)
 
 
 def test_only_issue_listed_cves_can_qualify():
-    facts = IssueFacts(
-        "pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",)
-    )
+    facts = IssueFacts("pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",))
     decision = route(
         facts,
         result(

@@ -8,8 +8,8 @@ from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app import metrics
-from app.issue_actions import is_fork_pr_url
 from app.interfaces import Deps
+from app.issue_actions import is_fork_pr_url
 from app.models import FORK_REPO
 
 

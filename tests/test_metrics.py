@@ -2,7 +2,7 @@ from app.budget import Budget
 from app.config import Settings
 from app.db import Database
 from app.metrics import compute
-from app.models import Issue, IssueState, TERMINAL_STATES
+from app.models import TERMINAL_STATES, Issue, IssueState
 
 
 def test_metrics_rate_and_median_time_to_pr():

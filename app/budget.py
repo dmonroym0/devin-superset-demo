@@ -62,8 +62,7 @@ class Budget:
     def mark_create_started(self, reservation_id: int, now: float) -> bool:
         with self._db._lock:
             cursor = self._db._connection.execute(
-                "UPDATE ledger SET create_started_at=? "
-                "WHERE id=? AND cancelled=0 AND session_id IS NULL",
+                "UPDATE ledger SET create_started_at=? WHERE id=? AND cancelled=0 AND session_id IS NULL",
                 (now, reservation_id),
             )
             self._db._connection.commit()

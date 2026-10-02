@@ -74,8 +74,7 @@ def _assert_triage_comment_lists_cves(github, number):
     comments = github.comments.get(number, [])
     assert cve_ids
     assert any(
-        cve_ids <= set(re.findall(r"CVE-\d{4}-\d+", comment.replace("\\-", "-")))
-        for comment in comments
+        cve_ids <= set(re.findall(r"CVE-\d{4}-\d+", comment.replace("\\-", "-"))) for comment in comments
     )
 
 
