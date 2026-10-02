@@ -2,6 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI
 
 from app import issue_actions
@@ -131,6 +132,32 @@ async def run_ticks(deps: Deps, actions, ticks: int = 10, step: float = 1.0, che
         deps.clock.now += step
 
 
+def http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://devin.test/sessions/demo-triage-2-1")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError("poll failed", request=request, response=response)
+
+
+async def run_ticks_with_poll_error(tmp_path, error, ticks=8):
+    devin = FakeDevin.from_scenarios()
+    get_session = devin.get_session
+    should_fail = True
+
+    async def fail_once(session_id):
+        nonlocal should_fail
+        if should_fail:
+            should_fail = False
+            raise error
+        return await get_session(session_id)
+
+    devin.get_session = fail_once
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 2)
+    await run_ticks(deps, actions, ticks=ticks)
+    return deps, devin
+
+
 def state(deps: Deps, number: int) -> IssueState:
     return deps.db.get_issue(number).state
 
@@ -183,6 +210,35 @@ async def test_transient_poll_error_retries_without_moving_issue_to_error(tmp_pa
     events = [event for event in deps.db.list_events(2) if event.kind == "devin_poll_failed"]
     assert len(events) == 1
     assert events[0].detail == "DevinError 503"
+
+
+async def test_poll_not_found_moves_issue_to_error(tmp_path):
+    deps, _ = await run_ticks_with_poll_error(tmp_path, DevinError(404, "GET", "/sessions/demo-triage-2-1"))
+
+    assert state(deps, 2) is IssueState.ERROR
+    assert deps.db.get_issue(2).last_error
+    assert any(event.kind == "pipeline_error" for event in deps.db.list_events(2))
+
+
+async def test_zero_status_poll_error_is_transient(tmp_path):
+    deps, _ = await run_ticks_with_poll_error(tmp_path, DevinError(0, "GET", "/sessions/demo-triage-2-1"))
+
+    assert state(deps, 2) is IssueState.NOT_REACHABLE
+    assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(2))
+
+
+async def test_transport_poll_error_is_transient(tmp_path):
+    deps, _ = await run_ticks_with_poll_error(tmp_path, httpx.ConnectError("network down"))
+
+    assert state(deps, 2) is IssueState.NOT_REACHABLE
+    assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(2))
+
+
+async def test_http_status_poll_server_error_is_transient(tmp_path):
+    deps, _ = await run_ticks_with_poll_error(tmp_path, http_status_error(503))
+
+    assert state(deps, 2) is IssueState.NOT_REACHABLE
+    assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(2))
 
 
 async def test_every_create_request_has_caps_tags_schema_and_repo(tmp_path):

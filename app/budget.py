@@ -69,6 +69,21 @@ class Budget:
             self._db._connection.commit()
             return cursor.rowcount
 
+    def attached_without_session(self, issue_number: int, stage: Stage) -> list[tuple[int, str, int, float]]:
+        with self._db._lock:
+            rows = self._db._connection.execute(
+                "SELECT ledger.id, ledger.session_id, ledger.cap, ledger.created_at "
+                "FROM ledger WHERE ledger.issue_number=? AND ledger.stage=? AND ledger.cancelled=0 "
+                "AND ledger.session_id IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.session_id=ledger.session_id) "
+                "ORDER BY ledger.id",
+                (issue_number, stage.value),
+            ).fetchall()
+        return [
+            (int(row["id"]), str(row["session_id"]), int(row["cap"]), float(row["created_at"]))
+            for row in rows
+        ]
+
     def committed(self) -> int:
         with self._db._lock:
             row = self._db._connection.execute(
