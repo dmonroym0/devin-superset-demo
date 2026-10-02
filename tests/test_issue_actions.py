@@ -116,6 +116,18 @@ async def test_rejected_prs_and_other_issue_actions(action_context):
     assert "human \\| decision" in github.comments[1][-1]
 
 
+def test_triage_comment_lists_unexpected_cves():
+    decision = RouteDecision(
+        RouteAction.NEEDS_HUMAN,
+        "no listed CVE was verified",
+        unexpected=("CVE-2026-9999",),
+    )
+
+    comment = render_triage_comment(decision, None)
+
+    assert "**Ignored (not listed in the issue):** CVE-2026-9999" in comment
+
+
 def test_triage_comment_omits_unsafe_urls():
     body = render_triage_comment(
         RouteDecision(RouteAction.FIX, "reachable"),

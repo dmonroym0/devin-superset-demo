@@ -204,3 +204,4 @@ class RouteDecision:
     reason: str
     qualifying: tuple[CveFinding, ...] = ()
     others: tuple[CveFinding, ...] = field(default_factory=tuple)
+    unexpected: tuple[str, ...] = ()

@@ -55,6 +55,10 @@ def render_triage_comment(
 
     findings = (*decision.qualifying, *decision.others)
     lines = ["### devin-superset-demo triage", "", route, ""]
+    if decision.unexpected:
+        lines.append(
+            f"**Ignored (not listed in the issue):** {_escape(', '.join(decision.unexpected))}"
+        )
     if findings:
         lines.extend(
             [

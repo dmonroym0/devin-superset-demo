@@ -73,33 +73,59 @@ def route(facts: IssueFacts, result: TriageResult | None, *, rejected: bool = Fa
     if result is None:
         return RouteDecision(RouteAction.NEEDS_HUMAN, "no valid triage result")
 
-    returned = {cve.cve_id.upper() for cve in result.cves}
+    if not facts.cve_ids:
+        return RouteDecision(
+            RouteAction.NEEDS_HUMAN,
+            "issue lists no CVE IDs; cannot validate triage output",
+        )
+
+    listed = {cve_id.upper() for cve_id in facts.cve_ids}
+    findings_from_issue = tuple(cve for cve in result.cves if cve.cve_id.upper() in listed)
+    unexpected = tuple(cve.cve_id for cve in result.cves if cve.cve_id.upper() not in listed)
+    returned = {cve.cve_id.upper() for cve in findings_from_issue}
     missing = tuple(
         CveFinding(cve_id, Verdict.UNKNOWN, Confidence.LOW, notes="no verdict returned")
         for cve_id in facts.cve_ids
         if cve_id.upper() not in returned
     )
-    findings = result.cves + missing
+    findings = findings_from_issue + missing
+    unexpected_ids = tuple(unexpected)
 
     if facts.bump_kind is BumpKind.MAJOR:
         return RouteDecision(
             RouteAction.NEEDS_HUMAN,
             f"major version bump {facts.current_version} -> {facts.fixed_version}",
             others=findings,
+            unexpected=unexpected_ids,
         )
     qualifying = tuple(cve for cve in findings if _qualifies(cve))
     if qualifying:
         if facts.bump_kind is BumpKind.UNKNOWN:
             return RouteDecision(
-                RouteAction.NEEDS_HUMAN, "could not confirm the bump is not major", others=findings
+                RouteAction.NEEDS_HUMAN,
+                "could not confirm the bump is not major",
+                others=findings,
+                unexpected=unexpected_ids,
             )
         others = tuple(cve for cve in findings if not _qualifies(cve))
         ids = ", ".join(cve.cve_id for cve in qualifying)
         return RouteDecision(
-            RouteAction.FIX, f"reachable with medium or high confidence: {ids}", qualifying, others
+            RouteAction.FIX,
+            f"reachable with medium or high confidence: {ids}",
+            qualifying,
+            others,
+            unexpected_ids,
         )
     if findings and all(cve.verdict is Verdict.NOT_REACHABLE for cve in findings):
-        return RouteDecision(RouteAction.CLOSE_LOW_PRIORITY, "all CVEs not reachable", others=findings)
+        return RouteDecision(
+            RouteAction.CLOSE_LOW_PRIORITY,
+            "all CVEs not reachable",
+            others=findings,
+            unexpected=unexpected_ids,
+        )
     return RouteDecision(
-        RouteAction.NEEDS_HUMAN, "no CVE is reachable with medium or high confidence", others=findings
+        RouteAction.NEEDS_HUMAN,
+        "no CVE is reachable with medium or high confidence",
+        others=findings,
+        unexpected=unexpected_ids,
     )

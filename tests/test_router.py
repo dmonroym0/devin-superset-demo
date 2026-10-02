@@ -51,8 +51,9 @@ def test_missing_lines_are_unknown():
 
 
 def test_reachable_medium_plus_unknown_is_fix_with_unknown_in_others():
+    facts = IssueFacts("pkg", "1.0.0", "1.0.1", BumpKind.PATCH, ("CVE-1", "CVE-2"))
     decision = route(
-        PATCH, result(cve("CVE-1", Verdict.REACHABLE, Confidence.MEDIUM), cve("CVE-2", Verdict.UNKNOWN))
+        facts, result(cve("CVE-1", Verdict.REACHABLE, Confidence.MEDIUM), cve("CVE-2", Verdict.UNKNOWN))
     )
     assert decision.action is RouteAction.FIX
     assert [c.cve_id for c in decision.qualifying] == ["CVE-1"]
@@ -85,8 +86,10 @@ def test_all_not_reachable_is_close():
 
 
 def test_not_reachable_plus_unknown_is_needs_human():
+    facts = IssueFacts("pkg", "1.0.0", "1.0.1", BumpKind.PATCH, ("CVE-1", "CVE-2"))
     decision = route(
-        PATCH, result(cve("CVE-1", Verdict.NOT_REACHABLE, Confidence.HIGH), cve("CVE-2", Verdict.UNKNOWN))
+        facts,
+        result(cve("CVE-1", Verdict.NOT_REACHABLE, Confidence.HIGH), cve("CVE-2", Verdict.UNKNOWN)),
     )
     assert decision.action is RouteAction.NEEDS_HUMAN
 
@@ -113,6 +116,50 @@ def test_cve_missing_from_result_is_added_as_unknown_low():
     missing = [c for c in decision.others if c.cve_id == "CVE-2"]
     assert missing and missing[0].verdict is Verdict.UNKNOWN and missing[0].confidence is Confidence.LOW
     assert missing[0].notes == "no verdict returned"
+
+
+def test_unlisted_reachable_cve_does_not_route_to_fix():
+    facts = IssueFacts(
+        "pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",)
+    )
+    decision = route(
+        facts,
+        result(cve("CVE-2026-9999", Verdict.REACHABLE, Confidence.HIGH)),
+    )
+
+    assert decision.action is RouteAction.NEEDS_HUMAN
+    assert [(item.cve_id, item.verdict) for item in decision.others] == [
+        ("CVE-2026-1111", Verdict.UNKNOWN)
+    ]
+    assert decision.unexpected == ("CVE-2026-9999",)
+
+
+def test_only_issue_listed_cves_can_qualify():
+    facts = IssueFacts(
+        "pkg", "6.0.1", "6.1.0", BumpKind.MINOR, ("CVE-2026-1111",)
+    )
+    decision = route(
+        facts,
+        result(
+            cve("CVE-2026-9999", Verdict.REACHABLE, Confidence.HIGH),
+            cve("CVE-2026-1111", Verdict.REACHABLE, Confidence.MEDIUM),
+        ),
+    )
+
+    assert decision.action is RouteAction.FIX
+    assert [item.cve_id for item in decision.qualifying] == ["CVE-2026-1111"]
+    assert decision.unexpected == ("CVE-2026-9999",)
+
+
+def test_issue_without_cve_ids_requires_human_review():
+    facts = IssueFacts("pkg", "6.0.1", "6.1.0", BumpKind.MINOR)
+    decision = route(
+        facts,
+        result(cve("CVE-2026-1111", Verdict.REACHABLE, Confidence.HIGH)),
+    )
+
+    assert decision.action is RouteAction.NEEDS_HUMAN
+    assert decision.reason == "issue lists no CVE IDs; cannot validate triage output"
 
 
 @pytest.mark.parametrize(
