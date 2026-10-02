@@ -32,6 +32,7 @@ DEMO mode replays scripted outcomes; the same code also ran against the real for
 - **Issue #2 (python-multipart):** all listed CVEs not reachable — the service commented, applied `devin:low-priority`, and closed the issue as not planned.
 - **Upstream sync:** opened changelog PR [#10](https://github.com/dmonroym0/superset/pull/10) from a `merge-upstream` commit range, on its own branch.
 - Earlier fix sessions opened PRs [#6](https://github.com/dmonroym0/superset/pull/6), [#7](https://github.com/dmonroym0/superset/pull/7) (stacked with [#8](https://github.com/dmonroym0/superset/pull/8)) on the fork. All PRs are **opened, not merged**.
+- **Cost:** the whole project — building the service with Devin, the audits, and the LIVE runs — cost about **$150 of on-demand usage on top of a Devin Pro plan** (Settings → Usage & Limits, which reports $ and % of quota). Per-issue ACUs can't be quoted: Devin reports `acus_consumed` 0 for every session on this plan ([#17](https://github.com/dmonroym0/devin-superset-demo/issues/17)), so the per-session caps are the control.
 
 Issues #1 and #4 are deliberately skipped: they already had open fix PRs and there is no duplicate-PR guard yet ([#10](https://github.com/dmonroym0/devin-superset-demo/issues/10)).
 
