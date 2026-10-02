@@ -9,13 +9,13 @@ from fastapi import FastAPI
 from app import issue_actions
 from app.budget import Budget
 from app.config import Settings
-from app.db import Database
+from app.db import Database, SessionRow
 from app.devin_client import DevinError
 from app.fake_devin import FakeDevin
 from app.fake_github import FakeGitHub
 from app.github_client import GitHubError
 from app.interfaces import Deps
-from app.models import Issue, IssueState, LabelSpec, Stage
+from app.models import Issue, IssueState, LabelSpec, SessionInfo, Stage
 from app.pipeline import register, tick
 from app.playbooks import resolve_playbooks
 from app.triage import start_triage
@@ -129,6 +129,28 @@ def seed(deps: Deps, *numbers: int) -> None:
         deps.db.upsert_seen_issue(issue, deps.clock())
 
 
+def add_settled_session(deps: Deps, issue_number: int, stage: Stage, *, created_at: float | None = None):
+    now = deps.clock()
+    session_id = f"settled-{stage.value}-{issue_number}"
+    row = SessionRow(
+        session_id=session_id,
+        issue_number=issue_number,
+        stage=stage,
+        status="running",
+        status_detail="working",
+        devin_mode=None,
+        max_acu_limit=deps.settings.triage_acu_cap if stage is Stage.TRIAGE else deps.settings.fix_acu_cap,
+        acus_consumed=0.0,
+        url=None,
+        created_at=now if created_at is None else created_at,
+        updated_at=now,
+        settled_at=now,
+        archived=stage is Stage.TRIAGE,
+    )
+    deps.db.insert_session(row)
+    return row
+
+
 def record_create_then_timeout(devin, *, stages: tuple[str, ...] | None = None) -> list[str]:
     created: list[str] = []
     create_session = devin.create_session
@@ -204,6 +226,108 @@ async def test_seeded_scenarios_end_states_and_archiving(tmp_path):
     assert not fix_ids & set(devin.archived)
     assert all(row.archived for row in deps.db.list_sessions(stage=Stage.TRIAGE))
     assert deps.db.get_issue(3).package and deps.db.get_issue(3).bump_kind is not None
+
+
+async def test_tick_refreshes_archived_triage_session_status_once(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 2)
+    deps.db.transition(2, [IssueState.SEEN], IssueState.NEEDS_HUMAN, deps.clock())
+    row = add_settled_session(deps, 2, Stage.TRIAGE)
+    calls = []
+
+    async def get_suspended_session(session_id):
+        calls.append(session_id)
+        return SessionInfo(session_id, status="suspended", status_detail="archived by Devin")
+
+    deps.devin.get_session = get_suspended_session
+
+    await tick(deps, actions)
+
+    updated = deps.db.get_session(row.session_id)
+    assert updated.status == "suspended"
+    assert updated.archived is True
+    assert deps.db.get_issue(2).state is IssueState.NEEDS_HUMAN
+
+    await tick(deps, actions)
+    assert calls == [row.session_id]
+
+
+async def test_tick_refreshes_settled_fix_status_without_side_effects(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 3)
+    deps.db.transition(
+        3,
+        [IssueState.SEEN],
+        IssueState.PR_OPENED,
+        deps.clock(),
+        pr_url="https://github.com/dmonroym0/superset/pull/903",
+    )
+    row = add_settled_session(deps, 3, Stage.FIX)
+    events_before = deps.db.list_events()
+    actions_before = list(actions.calls)
+    calls = []
+
+    async def get_updated_status(session_id):
+        calls.append(session_id)
+        return SessionInfo(session_id, status="running", status_detail="waiting on review")
+
+    deps.devin.get_session = get_updated_status
+
+    await tick(deps, actions)
+
+    assert deps.db.get_session(row.session_id).status_detail == "waiting on review"
+    assert deps.db.get_issue(3).state is IssueState.PR_OPENED
+    assert deps.db.list_events() == events_before
+    assert actions.calls == actions_before
+    assert deps.github.get_calls == []
+    assert calls == [row.session_id]
+
+
+async def test_tick_skips_settled_session_refresh_after_hard_timeout(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 3)
+    deps.db.transition(3, [IssueState.SEEN], IssueState.PR_OPENED, deps.clock())
+    created_at = deps.clock() - deps.settings.hard_timeout_s - 1
+    row = add_settled_session(deps, 3, Stage.FIX, created_at=created_at)
+    calls = []
+
+    async def get_session(session_id):
+        calls.append(session_id)
+        return SessionInfo(session_id, status="suspended")
+
+    deps.devin.get_session = get_session
+
+    await tick(deps, actions)
+
+    assert deps.db.get_session(row.session_id).status == "running"
+    assert calls == []
+
+
+async def test_tick_continues_when_settled_session_refresh_fails(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 3)
+    deps.db.transition(3, [IssueState.SEEN], IssueState.PR_OPENED, deps.clock())
+    row = add_settled_session(deps, 3, Stage.FIX)
+    events_before = deps.db.list_events()
+    calls = []
+
+    async def fail_get_session(session_id):
+        calls.append(session_id)
+        raise RuntimeError(f"failed to poll {session_id}")
+
+    deps.devin.get_session = fail_get_session
+
+    await tick(deps, actions)
+
+    assert deps.db.get_issue(3).state is IssueState.PR_OPENED
+    assert deps.db.get_session(row.session_id).status == "running"
+    assert deps.db.list_events() == events_before
+    assert actions.calls == []
+    assert calls == [row.session_id]
 
 
 async def test_transient_poll_error_retries_without_moving_issue_to_error(tmp_path):

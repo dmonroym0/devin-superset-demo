@@ -149,6 +149,25 @@ async def test_post_does_not_retry_transient_status():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_response_github_error_retains_message_without_changing_str():
+    message = "Resource not accessible by integration: workflows permission is required."
+    respx.get(f"{BASE}{REPO_PATH}/issues/10").mock(
+        return_value=httpx.Response(403, json={"message": message})
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.get_issue(10)
+
+        assert error.value.status_code == 403
+        assert error.value.message == message
+        assert str(error.value) == f"GitHub API error: GET {REPO_PATH}/issues/10 -> 403"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_foreign_next_link_is_not_followed_and_error_hides_token():
     respx.get(f"{BASE}{REPO_PATH}/issues").mock(
         return_value=httpx.Response(

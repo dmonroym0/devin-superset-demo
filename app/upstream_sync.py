@@ -28,6 +28,10 @@ _PENDING_BASE_SHA = "changelog_pending_base_sha"
 _PENDING_OUTCOME = "changelog_pending_outcome"
 
 
+def _normalize_message(message: str) -> str:
+    return " ".join(message.split())[:300] or "no message"
+
+
 def branch_meta_key(name: str, branch: str) -> str:
     return f"{name}:{branch}"
 
@@ -167,14 +171,17 @@ async def run_upstream_sync(deps: Deps) -> dict:
         if merge.outcome == "conflict":
             return await _record_conflict(deps, started_at, before_sha)
         if merge.outcome == "error":
+            msg = _normalize_message(merge.message)
+            detail = f"merge-upstream returned error: {msg}"
+            logger.warning("merge-upstream failed for %s: %s", branch, msg)
             _record(
                 deps,
                 started_at,
                 "error",
                 before_sha=before_sha,
-                detail="merge-upstream returned error",
+                detail=detail,
             )
-            return {"outcome": "error", "error": "merge_upstream_failed"}
+            return {"outcome": "error", "error": "merge_upstream_failed", "detail": msg}
 
         pending_outcome = deps.db.get_meta(pending_outcome_key)
         if merge.outcome in {"merged", "fast-forward"} or pending_outcome is None:
@@ -248,15 +255,21 @@ async def run_upstream_sync(deps: Deps) -> dict:
         )
         return {"outcome": outcome, "pr_url": pr_url}
     except GitHubError as error:
+        msg = _normalize_message(error.message) if error.message.strip() else ""
+        detail = f"GitHub status {error.status_code}: {msg}" if msg else f"GitHub status {error.status_code}"
         _record(
             deps,
             started_at,
             "error",
             before_sha=before_sha,
             after_sha=after_sha,
-            detail=f"GitHub status {error.status_code}",
+            detail=detail,
         )
-        return {"outcome": "error", "error": "github_unavailable"}
+        return {
+            "outcome": "error",
+            "error": "github_unavailable",
+            "detail": msg or f"GitHub status {error.status_code}",
+        }
 
 
 def register(app: FastAPI, deps: Deps) -> None:

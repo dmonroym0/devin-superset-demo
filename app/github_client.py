@@ -24,9 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubError(Exception):
-    def __init__(self, status_code: int, method: str, path: str):
+    def __init__(self, status_code: int, method: str, path: str, *, message: str = ""):
         self.status_code = status_code
         self.method = method
+        self.message = message
         parsed_path = urlsplit(path).path
         self.path = parsed_path or path.split("?", 1)[0]
         super().__init__(f"GitHub API error: {method} {self.path} -> {status_code}")
@@ -88,7 +89,12 @@ class HttpGitHubClient:
             ):
                 continue
             if response.status_code >= 400 and response.status_code not in ok_statuses:
-                raise GitHubError(response.status_code, method, safe_path)
+                raise GitHubError(
+                    response.status_code,
+                    method,
+                    safe_path,
+                    message=_response_message(response)[:300],
+                )
             return response
         raise AssertionError("unreachable")
 

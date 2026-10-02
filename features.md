@@ -62,6 +62,10 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 |---|---|---|---|---|
 | E2E DEMO run (startup, webhooks, budget, routing, modes) | verified | tests/test_e2e_demo.py | `pytest tests/test_e2e_demo.py` | R15 |
 | README (diagram, run, simulate, PAT perms, decisions, limits, Automation appendix, next steps) | planned | README.md | read it | R15, I, Q1 |
+| Upstream sync error details reach API and metrics | built | `app/github_client.py`, `app/upstream_sync.py`, `app/metrics.py`, `tests/test_github_client.py`, `tests/test_upstream_sync.py` | `test_response_github_error_retains_message_without_changing_str`, `test_merge_upstream_error_returns_502`, `test_github_sync_error_message_is_visible_in_detail` | LIVE-1 |
+| Workflows token permission is documented and flagged in LIVE preflight | built | `app/preflight.py`, `README.md`, `tests/test_preflight.py` | `test_preflight_reports_workflows_permission_only_when_sync_enabled` | LIVE-2 |
+| Settled Devin session statuses refresh without issue side effects | built | `app/db.py`, `app/pipeline.py`, `tests/test_pipeline.py` | `test_tick_refreshes_archived_triage_session_status_once`, `test_tick_refreshes_settled_fix_status_without_side_effects`, `test_tick_skips_settled_session_refresh_after_hard_timeout`, `test_tick_continues_when_settled_session_refresh_fails` | LIVE-3 |
+| Local single-issue sweep handles delayed GitHub label listing | built | `app/sweep.py`, `README.md`, `tests/test_sweep.py` | `test_single_issue_sweep_seeds_open_labeled_issue`, `test_single_issue_sweep_ignores_unlabeled_closed_and_pull_requests`, `test_single_issue_sweep_endpoint_maps_github_errors`, `test_sweep_endpoint_rejects_invalid_issue_query` | LIVE-4 |
 
 ## BONUS (only on explicit go)
 

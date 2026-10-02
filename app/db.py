@@ -506,6 +506,7 @@ class Database:
         stage: Stage | None = None,
         issue_number: int | None = None,
         active_only: bool = False,
+        settled_only: bool = False,
     ) -> list[SessionRow]:
         conditions = []
         values: list[Any] = []
@@ -517,6 +518,8 @@ class Database:
             values.append(issue_number)
         if active_only:
             conditions.append("settled_at IS NULL")
+        if settled_only:
+            conditions.append("settled_at IS NOT NULL")
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         with self._lock:
             rows = self._connection.execute(
