@@ -16,3 +16,40 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t forkfix:ci .
+      - name: Check non-root user
+        run: |
+          uid=$(docker run --rm forkfix:ci id -u)
+          [ "$uid" != "0" ]
+      # lead: enable after integration
+      - name: Check health endpoint
+        continue-on-error: true
+        run: |
+          docker run -d --name forkfix -p 127.0.0.1:8000:8000 forkfix:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/healthz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs forkfix
+          exit 1
+      - name: Remove container
+        if: always()
+        run: docker rm -f forkfix || true

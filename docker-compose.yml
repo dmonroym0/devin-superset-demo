@@ -1,0 +1,21 @@
+services:
+  forkfix:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_MODE: "${APP_MODE:-demo}"
+    volumes:
+      - forkfix-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  forkfix-data: {}
