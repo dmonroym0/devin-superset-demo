@@ -35,7 +35,7 @@ flowchart LR
   Q --> M[Board / and /metrics.json]
 ```
 
-Each issue moves through `seen → triaging → triaged → fixing → pr_opened`. It can also exit to `needs_human`, `not_reachable`, or `error`, or wait in `queued_budget` when the ACU ledger refuses a reservation. Every state change is a compare-and-set in SQLite, so when the webhook and the sweep see the same issue, it's still processed once.
+Each issue moves through `seen → triaging → triaged → fixing → pr_opened`. It can also exit to `needs_human`, `not_reachable`, or `error`, or wait in `queued_budget` when the ACU ledger refuses a triage reservation. If a fix reservation is refused, the issue stays `triaged` with a queued-budget label/event and retries the fix directly on a later tick, without running triage or spending triage ACUs again. Every state change is a compare-and-set in SQLite, so when the webhook and the sweep see the same issue, it's still processed once.
 
 ## Quick start (DEMO, no keys)
 

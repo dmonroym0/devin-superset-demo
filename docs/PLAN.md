@@ -43,7 +43,7 @@ flowchart LR
 
 Issue state machine (stored per issue; every transition is a compare-and-set in SQLite so webhook + sweep can never double-process):
 
-`seen → triaging → triaged → fixing → pr_opened`; exits `needs_human`, `not_reachable`, `error`; `queued_budget` when the ledger refuses a reservation (retried on the next tick, never silently dropped).
+`seen → triaging → triaged → fixing → pr_opened`; exits `needs_human`, `not_reachable`, `error`; `queued_budget` when the ledger refuses a triage reservation (retried on the next tick, never silently dropped). If a fix reservation is refused, the issue remains `triaged` with the queued-budget label/event and retries the fix directly on a later tick, without repeating triage.
 
 ## 4. Files and module ownership
 
@@ -60,7 +60,7 @@ Each child works on its own branch off the core commit and opens a PR into the l
 ## 5. Budgets — two separate ledgers
 
 - **Build budget (this project):** target **≤ 60 ACUs for MUST + SHOULD**. Lead scaffold/core ≈ 10, children A/B/C capped at `max_acu_limit` 12 each (≤ 36), lead integration + e2e + docs ≈ 12 → ≈ 58. If the forecast exceeds 60, the lead says so at the checkpoint before continuing.
-- **Runtime budget (the service):** per-session caps triage `TRIAGE_ACU_CAP=5`, fix `FIX_ACU_CAP=15`, and a **global ceiling `ACU_CEILING=120` across ALL issues** (not per issue). The ledger counts the sum of `max_acu_limit` granted; a reservation that would cross the ceiling is refused and the issue moves to `queued_budget`. Metered `acus_consumed` reads 0.0 inside the included quota, so the caps are the control; actual `acus_consumed` is still recorded per session for comparison.
+- **Runtime budget (the service):** per-session caps triage `TRIAGE_ACU_CAP=5`, fix `FIX_ACU_CAP=15`, and a **global ceiling `ACU_CEILING=120` across ALL issues** (not per issue). The ledger counts the sum of `max_acu_limit` granted. A refused triage reservation moves the issue to `queued_budget`; a refused fix reservation leaves it `triaged` with a queued-budget label/event and retries the fix directly, so a retry does not run triage or spend triage ACUs again. Metered `acus_consumed` reads 0.0 inside the included quota, so the caps are the control; actual `acus_consumed` is still recorded per session for comparison.
 
 ## 6. Devin API v3 surface (verified against docs.devin.ai)
 
