@@ -32,6 +32,16 @@ def test_dashboard_renders_database_rows_safely(test_settings, fake_github, fake
             1_699_999_960,
             route_reason="human decision required",
         )
+        db.upsert_seen_issue(Issue(number=103, title="Other repository PR", body=""), 1_699_999_918)
+        db.transition(
+            103,
+            [IssueState.SEEN],
+            IssueState.PR_OPENED,
+            1_699_999_960,
+            route_reason="reachable",
+            pr_url="https://github.com/other/repo/pull/202",
+            pr_opened_at=1_699_999_960,
+        )
         db.insert_session(
             SessionRow(
                 session_id="session-default",
@@ -78,6 +88,8 @@ def test_dashboard_renders_database_rows_safely(test_settings, fake_github, fake
     assert "42s" in response.text
     assert "runtime ceiling across all issues" in response.text
     assert "https://github.com/dmonroym0/superset/issues/101" in response.text
+    assert 'href="https://github.com/other/repo/pull/202"' not in response.text
+    assert "https://github.com/other/repo/pull/202" in response.text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
     assert "<script>alert(1)" not in response.text
     assert "org default" in response.text

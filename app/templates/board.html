@@ -66,8 +66,8 @@
               <td>{{ issue.state }}</td>
               <td>{{ issue.route_reason or "—" }}</td>
               <td>
-                {% if issue.pr_url | https_url %}
-                <a href="{{ issue.pr_url | https_url }}">{{ issue.pr_url }}</a>
+                {% if issue.pr_url | fork_pr_url %}
+                <a href="{{ issue.pr_url | fork_pr_url }}">{{ issue.pr_url }}</a>
                 {% else %}
                 {{ issue.pr_url or "—" }}
                 {% endif %}

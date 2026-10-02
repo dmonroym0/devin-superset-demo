@@ -16,6 +16,7 @@ from app.models import (
     LABEL_PR_OPENED,
     LABEL_QUEUED_BUDGET,
     LABEL_TRIAGE_REJECTED,
+    FORK_REPO,
     RouteAction,
     RouteDecision,
     TriageResult,
@@ -23,22 +24,25 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
-_SAFE_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::\d+)?(?:/[A-Za-z0-9._~%/#?=+:@!$,*-]*)?$")
+_FORK_PR_URL = re.compile(rf"^https://github\.com/{re.escape(FORK_REPO)}/pull/\d+$")
+_MARKDOWN_SPECIAL = frozenset(r"\`*_{}[]()#+-!|~")
 
 
 def _escape(text: str) -> str:
-    return (
-        text.replace("\r\n", " ")
-        .replace("\n", " ")
-        .replace("\r", " ")
-        .replace("|", "\\|")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(r"[\r\n]+", " ", text)
+    return "".join(f"\\{char}" if char in _MARKDOWN_SPECIAL else char for char in text)
+
+
+def is_fork_pr_url(url: str | None) -> bool:
+    return isinstance(url, str) and _FORK_PR_URL.fullmatch(url) is not None
+
+
+def _safe_comment_url(url: str, issue_number: int) -> bool:
+    pattern = re.compile(
+        rf"^https://github\.com/{re.escape(FORK_REPO)}/issues/{issue_number}#issuecomment-\d+$"
     )
-
-
-def _safe_url(url: str) -> bool:
-    return _SAFE_URL.fullmatch(url) is not None
+    return pattern.fullmatch(url) is not None
 
 
 def render_triage_comment(
@@ -79,10 +83,13 @@ def render_triage_comment(
             [
                 "",
                 "**Triage result rejected: the read-only triage session opened PR(s):**",
-                *(f"- <{url}>" if _safe_url(url) else "- (unsafe URL omitted)" for url in rejected_pr_urls),
+                *(
+                    f"- <{url}>" if is_fork_pr_url(url) else "- (unsafe URL omitted)"
+                    for url in rejected_pr_urls
+                ),
             ]
         )
-    if result and result.comment_url and _safe_url(result.comment_url):
+    if result and result.comment_url and _safe_comment_url(result.comment_url, result.issue_number):
         lines.extend(["", f"[full triage comment]({result.comment_url})"])
     lines.extend(["", "_Automated by devin-superset-demo._"])
     return "\n".join(lines)
@@ -151,7 +158,9 @@ async def apply_route(
 
 
 async def mark_pr_opened(deps: Deps, number: int, pr_urls: Sequence[str]) -> None:
-    urls = "\n".join(f"- <{url}>" if _safe_url(url) else "- (unsafe URL omitted)" for url in pr_urls)
+    urls = "\n".join(
+        f"- <{url}>" if is_fork_pr_url(url) else "- (unsafe URL omitted)" for url in pr_urls
+    )
     body = f"{urls}\n\nOpened, not done: CI and review continue in the Devin session."
     await _comment(deps, number, body)
     await _add_labels(deps, number, [LABEL_PR_OPENED])

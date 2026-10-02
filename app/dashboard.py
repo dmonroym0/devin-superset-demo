@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app import metrics
+from app.issue_actions import is_fork_pr_url
 from app.interfaces import Deps
 from app.models import FORK_REPO
 
@@ -20,6 +21,9 @@ def register(app: FastAPI, deps: Deps) -> None:
 
     def https_url(value: str | None) -> str | None:
         return value if isinstance(value, str) and value.startswith("https://") else None
+
+    def fork_pr_url(value: str | None) -> str | None:
+        return value if is_fork_pr_url(value) else None
 
     def duration(seconds: float | None) -> str:
         if seconds is None:
@@ -37,6 +41,7 @@ def register(app: FastAPI, deps: Deps) -> None:
         return "—" if value is None else f"{round(value * 100):d}%"
 
     templates.filters["https_url"] = https_url
+    templates.filters["fork_pr_url"] = fork_pr_url
     templates.filters["duration"] = duration
     templates.filters["percentage"] = percentage
     template = templates.get_template("board.html")

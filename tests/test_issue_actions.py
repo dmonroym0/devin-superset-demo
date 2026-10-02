@@ -65,7 +65,7 @@ async def test_route_actions_comment_label_and_close(action_context):
     )
     assert comment_url
     assert LABEL_IN_PROGRESS in github.labels(1)
-    assert "CVE-2026-0002" in github.comments[1][0]
+    assert r"CVE\-2026\-0002" in github.comments[1][0]
     assert "UNKNOWN" in github.comments[1][0]
     assert r"requirements/base.txt:10 \| direct use" in github.comments[1][0]
 
@@ -97,18 +97,25 @@ async def test_rejected_prs_and_other_issue_actions(action_context):
         4,
         RouteDecision(RouteAction.NEEDS_HUMAN, "read-only violation"),
         None,
-        rejected_pr_urls=("https://demo.invalid/pr/1",),
+        rejected_pr_urls=("https://github.com/dmonroym0/superset/pull/1",),
     )
     assert LABEL_TRIAGE_REJECTED in github.labels(4)
     assert "read-only triage session opened PR(s)" in github.comments[4][0]
-    assert "https://demo.invalid/pr/1" in github.comments[4][0]
+    assert "https://github.com/dmonroym0/superset/pull/1" in github.comments[4][0]
 
-    await mark_pr_opened(deps, 5, ("https://demo.invalid/pr/2", "https://evil.example/pr/3(extra)"))
+    await mark_pr_opened(
+        deps,
+        5,
+        (
+            "https://github.com/dmonroym0/superset/pull/2",
+            "https://github.com/other/repo/pull/3",
+        ),
+    )
     assert LABEL_PR_OPENED in github.labels(5)
     assert LABEL_IN_PROGRESS not in github.labels(5)
-    assert "- <https://demo.invalid/pr/2>" in github.comments[5][0]
+    assert "- <https://github.com/dmonroym0/superset/pull/2>" in github.comments[5][0]
     assert "- (unsafe URL omitted)" in github.comments[5][0]
-    assert "evil.example" not in github.comments[5][0]
+    assert "github.com/other/repo/pull/3" not in github.comments[5][0]
     assert "Opened, not done: CI and review continue in the Devin session." in github.comments[5][0]
 
     await mark_needs_human(deps, 1, "human | decision")
@@ -125,24 +132,66 @@ def test_triage_comment_lists_unexpected_cves():
 
     comment = render_triage_comment(decision, None)
 
-    assert "**Ignored (not listed in the issue):** CVE-2026-9999" in comment
+    assert r"**Ignored (not listed in the issue):** CVE\-2026\-9999" in comment
 
 
 def test_triage_comment_omits_unsafe_urls():
     body = render_triage_comment(
         RouteDecision(RouteAction.FIX, "reachable"),
-        TriageResult(1, (), comment_url="https://example.com/x](https://evil.example)"),
+        TriageResult(
+            1,
+            (),
+            comment_url="https://github.com/dmonroym0/superset/issues/2#issuecomment-17",
+        ),
         rejected_pr_urls=(
             "https://evil.example/pull/8(extra)",
+            "https://github.com.evil.example/phish",
+            "https://github.com/other/repo/pull/1",
             "https://github.com/dmonroym0/superset/pull/9&#41;",
             "https://github.com/dmonroym0/superset/pull/10",
         ),
     )
     assert "evil.example" not in body
     assert "[full triage comment]" not in body
-    assert body.count("- (unsafe URL omitted)") == 2
+    assert body.count("- (unsafe URL omitted)") == 4
+    assert "github.com/other/repo/pull/1" not in body
     assert "https://github.com/dmonroym0/superset/pull/9&#41;" not in body
     assert "- <https://github.com/dmonroym0/superset/pull/10>" in body
+
+
+def test_triage_comment_renders_allowlisted_fork_links():
+    body = render_triage_comment(
+        RouteDecision(RouteAction.FIX, "reachable"),
+        TriageResult(
+            1,
+            (),
+            comment_url="https://github.com/dmonroym0/superset/issues/1#issuecomment-9",
+        ),
+        rejected_pr_urls=("https://github.com/dmonroym0/superset/pull/10",),
+    )
+
+    assert "- <https://github.com/dmonroym0/superset/pull/10>" in body
+    assert "[full triage comment](https://github.com/dmonroym0/superset/issues/1#issuecomment-9)" in body
+
+
+def test_triage_comment_escapes_markdown_model_text():
+    finding = CveFinding(
+        "[cve](https://evil)",
+        Verdict.REACHABLE,
+        Confidence.HIGH,
+        evidence=("[click](https://evil)\n**x** & <tag>",),
+    )
+    decision = RouteDecision(
+        RouteAction.NEEDS_HUMAN,
+        "reason **x**",
+        others=(finding,),
+    )
+
+    body = render_triage_comment(decision, None)
+
+    assert r"\[cve\]\(https://evil\)" in body
+    assert r"\[click\]\(https://evil\) \*\*x\*\* &amp; &lt;tag&gt;" in body
+    assert r"reason \*\*x\*\*" in body
 
 
 @pytest.mark.asyncio
