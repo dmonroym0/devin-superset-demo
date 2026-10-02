@@ -6,6 +6,7 @@ import httpx
 import pytest
 import respx
 
+from app import github_client
 from app.changelog import render_section
 from app.config import Settings
 from app.github_client import GitHubError, HttpGitHubClient
@@ -16,12 +17,12 @@ REPO_PATH = "/repos/dmonroym0/superset"
 FAKE_TOKEN = "ghp_test_token_value"
 
 
-def _settings():
+def _settings(token=FAKE_TOKEN):
     return Settings.from_env(
         {
             "APP_MODE": "live",
             "GITHUB_API_BASE": BASE,
-            "GITHUB_TOKEN": FAKE_TOKEN,
+            "GITHUB_TOKEN": token,
         }
     )
 
@@ -149,6 +150,46 @@ async def test_post_does_not_retry_transient_status():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_response_github_error_retains_message_without_changing_str():
+    message = "Resource not accessible by integration: workflows permission is required."
+    respx.get(f"{BASE}{REPO_PATH}/issues/10").mock(
+        return_value=httpx.Response(403, json={"message": message})
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.get_issue(10)
+
+        assert error.value.status_code == 403
+        assert error.value.message == message
+        assert str(error.value) == f"GitHub API error: GET {REPO_PATH}/issues/10 -> 403"
+    finally:
+        await client.aclose()
+
+
+def test_redact_secrets_redacts_token_formats_and_literal():
+    secrets = (
+        "ghp_" + "a" * 20,
+        "gho_" + "b" * 20,
+        "ghu_" + "c" * 20,
+        "ghs_" + "d" * 20,
+        "ghr_" + "e" * 20,
+        "github_pat_" + "f" * 20,
+        "Bearer bearer-secret",
+        "token " + "g" * 20,
+        "configured secret literal",
+    )
+    text = " ".join(secrets)
+
+    redacted = github_client.redact_secrets(text, extra=(secrets[-1],))
+
+    assert redacted.count("[redacted]") == len(secrets)
+    assert all(secret not in redacted for secret in secrets)
+    assert github_client.redact_secrets("No credentials here.") == "No credentials here."
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_foreign_next_link_is_not_followed_and_error_hides_token():
     respx.get(f"{BASE}{REPO_PATH}/issues").mock(
         return_value=httpx.Response(
@@ -239,6 +280,29 @@ async def test_merge_upstream_maps_github_outcomes(status, payload, outcome):
         assert isinstance(result, MergeUpstreamResult)
         assert result.outcome == outcome
         assert route.calls[0].request.content == b'{"branch":"master"}'
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_merge_upstream_redacts_configured_token_and_github_token():
+    configured_token = "configured-token-1234567890"
+    github_token = "ghp_" + "h" * 24
+    respx.post(f"{BASE}{REPO_PATH}/merge-upstream").mock(
+        return_value=httpx.Response(
+            422,
+            json={"message": f"Rejected {configured_token}; leaked {github_token}"},
+        )
+    )
+    client = HttpGitHubClient(_settings(token=configured_token))
+    try:
+        result = await client.merge_upstream("master")
+
+        assert result.outcome == "error"
+        assert configured_token not in result.message
+        assert github_token not in result.message
+        assert result.message.count("[redacted]") == 2
     finally:
         await client.aclose()
 
@@ -451,9 +515,17 @@ async def test_get_file_rejects_failed_or_unsupported_blob_response(blob_respons
         await client.aclose()
 
 
-def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status=404, existing_content=None):
+def _mock_changelog_pr_routes(
+    *,
+    ref_status=201,
+    pull_status=201,
+    content_status=404,
+    existing_content=None,
+    ref_message="Reference already exists",
+    pull_message=None,
+):
     ref = respx.post(f"{BASE}{REPO_PATH}/git/refs").mock(
-        return_value=httpx.Response(ref_status, json={"message": "Reference already exists"})
+        return_value=httpx.Response(ref_status, json={"message": ref_message})
     )
     content_payload = {"sha": "old-file-sha"}
     if existing_content is not None:
@@ -467,18 +539,17 @@ def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status
     content_put = respx.put(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
         return_value=httpx.Response(201, json={"content": {"sha": "new-file-sha"}})
     )
+    if pull_status == 201:
+        pull_payload = {"html_url": "https://github.com/dmonroym0/superset/pull/901"}
+    elif pull_message is not None:
+        pull_payload = {"message": pull_message}
+    else:
+        pull_payload = {
+            "message": "Validation Failed",
+            "errors": [{"message": "A pull request already exists"}],
+        }
     pulls_post = respx.post(f"{BASE}{REPO_PATH}/pulls").mock(
-        return_value=httpx.Response(
-            pull_status,
-            json=(
-                {"html_url": "https://github.com/dmonroym0/superset/pull/901"}
-                if pull_status == 201
-                else {
-                    "message": "Validation Failed",
-                    "errors": [{"message": "A pull request already exists"}],
-                }
-            ),
-        )
+        return_value=httpx.Response(pull_status, json=pull_payload)
     )
     pulls_get = respx.get(f"{BASE}{REPO_PATH}/pulls").mock(
         return_value=httpx.Response(
@@ -540,6 +611,54 @@ async def test_create_changelog_pr_continues_when_branch_ref_exists():
         assert ref.call_count == 1
         assert content_put.call_count == 1
         assert pulls_post.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_propagates_ref_422_message():
+    branch = "devin/fork-changelog-abcdef123456"
+    message = "Validation failed"
+    _mock_changelog_pr_routes(ref_status=422, ref_message=message)
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.create_changelog_pr(
+                "master",
+                "a" * 40,
+                branch,
+                "# Fork changelog\n",
+                "title",
+                "body",
+            )
+
+        assert message in error.value.message
+        assert str(error.value) == f"GitHub API error: POST {REPO_PATH}/git/refs -> 422"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_propagates_pull_422_message():
+    branch = "devin/fork-changelog-abcdef123456"
+    message = "No commits between master and x"
+    _mock_changelog_pr_routes(pull_status=422, pull_message=message)
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.create_changelog_pr(
+                "master",
+                "a" * 40,
+                branch,
+                "# Fork changelog\n",
+                "title",
+                "body",
+            )
+
+        assert message in error.value.message
+        assert str(error.value) == f"GitHub API error: POST {REPO_PATH}/pulls -> 422"
     finally:
         await client.aclose()
 

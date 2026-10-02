@@ -261,6 +261,13 @@ def main(
         return int(failed)
 
     _report(out, "APP_MODE", "set", "live")
+    if settings.upstream_sync_enabled:
+        _report(
+            out,
+            "UPSTREAM_SYNC_ENABLED",
+            "set",
+            "token also needs Contents, Pull requests and Workflows write; not checkable read-only",
+        )
     failed = False
     for name, is_set in (
         ("GITHUB_TOKEN", bool(settings.github_token)),

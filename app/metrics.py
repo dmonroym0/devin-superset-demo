@@ -96,6 +96,7 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "enabled": settings.upstream_sync_enabled,
             "last_outcome": sync["outcome"] if sync else None,
             "last_at": _iso_timestamp(sync["started_at"]) if sync else None,
+            "last_detail": sync["detail"] if sync else None,
             "changelog_pr_url": changelog_pr_url,
             "conflict_issue_number": int(conflict_issue_number) if conflict_issue_number else None,
             "changelog_through_sha": db.get_meta(branch_meta_key("changelog_through_sha", branch)),
