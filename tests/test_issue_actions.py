@@ -120,7 +120,7 @@ def test_triage_comment_omits_unsafe_urls():
         RouteDecision(RouteAction.FIX, "reachable"),
         TriageResult(1, (), comment_url="https://example.com/x](https://evil.example)"),
         rejected_pr_urls=(
-            "https://evil.example/pull/8",
+            "https://evil.example/pull/8(extra)",
             "https://github.com/dmonroym0/superset/pull/9",
         ),
     )

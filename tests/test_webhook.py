@@ -137,9 +137,9 @@ def test_webhook_ignores_closed_labeled_issue(tmp_path, fake_devin):
     body = _payload(6, state="closed")
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
         response = client.post("/webhooks/github", content=body, headers=_headers(body))
-    assert response.status_code == 200
-    assert response.json() == {"status": "ignored", "reason": "closed"}
-    assert app.state.deps.db.get_issue(6) is None
+        assert response.status_code == 200
+        assert response.json() == {"status": "ignored", "reason": "closed"}
+        assert app.state.deps.db.get_issue(6) is None
 
 
 def test_missing_delivery_id_and_live_disabled_webhook(tmp_path, fake_devin):
