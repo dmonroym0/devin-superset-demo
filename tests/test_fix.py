@@ -60,3 +60,19 @@ async def test_fix_budget_refusal_keeps_triaged(tmp_path):
     assert state(deps, 1) is IssueState.TRIAGED
     assert actions.names(1).count("mark_queued_budget") == 1
     assert not [r for r in deps.devin.requests if "stage-fix" in r.tags]
+
+
+async def test_fix_budget_comment_retry_after_failure(tmp_path):
+    deps = await make_deps(tmp_path, ACU_CEILING="15")
+    actions = RecordingActions()
+    seed(deps, 1)
+    await run_ticks(deps, actions, ticks=5)
+    assert actions.names(1).count("mark_queued_budget") == 1
+
+    deps.db.add_event(1, "queued_budget_comment_failed", "x", deps.clock())
+    await run_ticks(deps, actions, ticks=1)
+    assert actions.names(1).count("mark_queued_budget") == 2
+
+    deps.db.add_event(1, "queued_budget_commented", "x", deps.clock())
+    await run_ticks(deps, actions, ticks=1)
+    assert actions.names(1).count("mark_queued_budget") == 2

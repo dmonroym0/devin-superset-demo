@@ -4,10 +4,13 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from app import issue_actions
 from app.budget import Budget
 from app.config import Settings
 from app.db import Database
 from app.fake_devin import FakeDevin
+from app.fake_github import FakeGitHub
+from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.models import Issue, IssueState, LabelSpec, Stage
 from app.pipeline import register, tick
@@ -241,6 +244,34 @@ async def test_budget_queues_and_retries_without_exceeding_ceiling(tmp_path):
     assert state(deps, 5) is IssueState.NEEDS_HUMAN
     assert state(deps, 3) is IssueState.TRIAGED
     assert actions.names(3).count("mark_queued_budget") == 1
+
+
+async def test_pipeline_retries_failed_budget_comment(tmp_path, monkeypatch):
+    deps = await make_deps(tmp_path, ACU_CEILING="5", TRIAGE_ACU_CAP="5", FIX_ACU_CAP="5")
+    github = FakeGitHub.from_seed()
+    deps.github = github
+    seed(deps, 1, 2)
+    original_create_comment = github.create_comment
+    failed = False
+
+    async def fail_once(number, body):
+        nonlocal failed
+        if number == 2 and body.startswith("Queued for the next retry:") and not failed:
+            failed = True
+            raise GitHubError(503, "POST", "/repos/dmonroym0/superset/issues/2/comments")
+        return await original_create_comment(number, body)
+
+    monkeypatch.setattr(github, "create_comment", fail_once)
+    await run_ticks(deps, issue_actions, ticks=4)
+
+    queue_comments = [
+        comment for comment in github.comments[2] if comment.startswith("Queued for the next retry:")
+    ]
+    events = deps.db.list_events(issue_number=2)
+    assert failed
+    assert len(queue_comments) == 1
+    assert any(event.kind == "queued_budget_comment_failed" for event in events)
+    assert any(event.kind == "queued_budget_commented" for event in events)
 
 
 async def test_concurrent_ticks_create_one_triage_session(tmp_path):

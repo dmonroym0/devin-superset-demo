@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Sequence
 
+from app.db import Database
 from app.github_client import GitHubError
 from app.interfaces import Deps
 from app.models import (
@@ -22,7 +23,7 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
-_SAFE_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::\d+)?(?:/[A-Za-z0-9._~%/#?=&+:@!$,;*-]*)?$")
+_SAFE_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::\d+)?(?:/[A-Za-z0-9._~%/#?=+:@!$,*-]*)?$")
 
 
 def _escape(text: str) -> str:
@@ -174,8 +175,25 @@ async def mark_queued_budget(deps: Deps, number: int, committed: int, ceiling: i
             f"committed {committed} / ceiling {ceiling}",
             deps.clock(),
         )
+    else:
+        deps.db.add_event(
+            number,
+            "queued_budget_comment_failed",
+            f"committed {committed} / ceiling {ceiling}",
+            deps.clock(),
+        )
 
 
 async def clear_queued_budget(deps: Deps, number: int) -> None:
     await _remove_label(deps, number, LABEL_QUEUED_BUDGET)
     deps.db.add_event(number, "queued_budget_cleared", "label removed", deps.clock())
+
+
+def queued_budget_retry_due(db: Database, number: int) -> bool:
+    """True when the latest queued-budget comment attempt in this queue cycle failed."""
+    for event in db.list_events(issue_number=number):
+        if event.kind == "queued_budget_comment_failed":
+            return True
+        if event.kind in {"queued_budget_commented", "queued_budget_cleared"}:
+            return False
+    return False

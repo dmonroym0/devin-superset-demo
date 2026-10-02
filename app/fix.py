@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from app.db import IssueRow, SessionRow
 from app.escalation import check_stuck, notify
 from app.interfaces import Deps
+from app.issue_actions import queued_budget_retry_due
 from app.models import (
     FORK_REPO,
     Issue,
@@ -101,6 +102,7 @@ async def start_fix(
         db.transition(number, [IssueState.FIXING], IssueState.TRIAGED, deps.clock())
         if not was_queued:
             db.add_event(number, "queued_budget", f"fix cap {cap} refused", deps.clock())
+        if not was_queued or queued_budget_retry_due(db, number):
             await notify(
                 deps,
                 number,

@@ -10,6 +10,7 @@ from app.issue_actions import (
     mark_needs_human,
     mark_pr_opened,
     mark_queued_budget,
+    queued_budget_retry_due,
     render_triage_comment,
 )
 from app.main import create_app
@@ -121,13 +122,15 @@ def test_triage_comment_omits_unsafe_urls():
         TriageResult(1, (), comment_url="https://example.com/x](https://evil.example)"),
         rejected_pr_urls=(
             "https://evil.example/pull/8(extra)",
-            "https://github.com/dmonroym0/superset/pull/9",
+            "https://github.com/dmonroym0/superset/pull/9&#41;",
+            "https://github.com/dmonroym0/superset/pull/10",
         ),
     )
     assert "evil.example" not in body
     assert "[full triage comment]" not in body
-    assert "- (unsafe URL omitted)" in body
-    assert "- <https://github.com/dmonroym0/superset/pull/9>" in body
+    assert body.count("- (unsafe URL omitted)") == 2
+    assert "https://github.com/dmonroym0/superset/pull/9&#41;" not in body
+    assert "- <https://github.com/dmonroym0/superset/pull/10>" in body
 
 
 @pytest.mark.asyncio
@@ -176,9 +179,15 @@ async def test_queued_budget_comment_retries_after_github_error(action_context, 
     monkeypatch.setattr(github, "create_comment", fail_once)
     await mark_queued_budget(deps, 1, committed=120, ceiling=120)
     assert github.comments.get(1, []) == []
-    assert not any(event.kind == "queued_budget_commented" for event in deps.db.list_events(1))
+    events = deps.db.list_events(issue_number=1)
+    assert any(event.kind == "queued_budget_comment_failed" for event in events)
+    assert queued_budget_retry_due(deps.db, 1)
 
     await mark_queued_budget(deps, 1, committed=120, ceiling=120)
     assert attempts == 2
     assert len(github.comments[1]) == 1
     assert any(event.kind == "queued_budget_commented" for event in deps.db.list_events(1))
+    assert not queued_budget_retry_due(deps.db, 1)
+
+    await clear_queued_budget(deps, 1)
+    assert not queued_budget_retry_due(deps.db, 1)

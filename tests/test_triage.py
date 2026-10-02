@@ -106,6 +106,23 @@ async def test_queued_budget_marked_once(tmp_path):
     assert actions.names(2) == ["mark_queued_budget"]
 
 
+async def test_queued_budget_comment_retry_after_failure(tmp_path):
+    deps = await make_deps(tmp_path, ACU_CEILING="5", TRIAGE_ACU_CAP="5", FIX_ACU_CAP="5")
+    actions = RecordingActions()
+    seed(deps, 1, 2)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget"]
+
+    deps.db.add_event(2, "queued_budget_comment_failed", "x", deps.clock())
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget", "mark_queued_budget"]
+
+    deps.db.add_event(2, "queued_budget_commented", "x", deps.clock())
+    await start_triage(deps, deps.db.get_issue(2), actions)
+    assert actions.names(2) == ["mark_queued_budget", "mark_queued_budget"]
+
+
 async def test_pr_on_an_unsettled_poll_rejects_triage(tmp_path):
     devin = ScriptedDevin()
     deps = await make_deps(tmp_path, devin=devin)
