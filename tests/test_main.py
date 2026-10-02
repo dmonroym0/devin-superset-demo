@@ -49,6 +49,7 @@ def test_health_metrics_labels_and_lifecycle(fake_github, fake_devin, test_setti
             "automation_rate",
             "median_time_to_pr_s",
             "acu",
+            "upstream_sync",
             "sessions",
             "issues_detail",
         }

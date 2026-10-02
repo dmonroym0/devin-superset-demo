@@ -85,4 +85,9 @@ def fake_devin():
 
 @pytest.fixture
 def test_settings(tmp_path):
-    return Settings.from_env({"DB_PATH": str(tmp_path / "test.db")})
+    return Settings.from_env(
+        {
+            "DB_PATH": str(tmp_path / "test.db"),
+            "UPSTREAM_SYNC_ENABLED": "false",
+        }
+    )
