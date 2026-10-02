@@ -49,8 +49,14 @@ class FakeGitHub:
         if existing is None:
             labels = tuple(dict.fromkeys((*issue.labels, label)))
             self.issues[issue.number] = replace(issue, labels=labels)
-        elif label not in existing.labels:
-            self.issues[issue.number] = replace(existing, labels=(*existing.labels, label))
+        else:
+            labels = tuple(dict.fromkeys((*existing.labels, label)))
+            self.issues[issue.number] = replace(
+                existing,
+                title=issue.title,
+                body=issue.body,
+                labels=labels,
+            )
         self.existing_labels.update(self.issues[issue.number].labels)
 
     def _get_issue(self, number: int, method: str, path: str) -> Issue:

@@ -22,7 +22,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
-| Webhook intake (HMAC, redelivery dedupe, fork-only) | verified | app/webhook.py, app/fake_github.py | `pytest tests/test_webhook.py`; `pytest tests/test_webhook.py::test_demo_webhook_keeps_existing_closed_issue_state`; `pytest tests/test_webhook.py::test_demo_webhook_adds_trigger_label_to_unknown_issue`; `pytest tests/test_e2e_demo.py` | R1, Q6 |
+| Webhook intake (HMAC, redelivery dedupe, fork-only) | verified | app/webhook.py, app/fake_github.py | `pytest tests/test_webhook.py`; `pytest tests/test_webhook.py::test_demo_webhook_keeps_existing_closed_issue_state`; `pytest tests/test_webhook.py::test_demo_webhook_updates_existing_title_and_body_preserving_state_and_labels`; `pytest tests/test_webhook.py::test_demo_webhook_adds_trigger_label_to_unknown_issue`; `pytest tests/test_e2e_demo.py` | R1, Q6 |
 | Periodic sweep + local POST /sweep | verified | app/sweep.py | `curl -X POST localhost:8000/sweep`; `pytest tests/test_e2e_demo.py` | R1, Q4 |
 | GitHub client + seeded fake | verified | app/github_client.py, app/fake_github.py | `pytest tests/test_github_client.py`; `pytest tests/test_e2e_demo.py` | R13, G |
 | URL destination allowlist + Markdown escaping | verified | app/issue_actions.py, app/dashboard.py | `python -m pytest tests/test_issue_actions.py::test_triage_comment_omits_unsafe_urls tests/test_issue_actions.py::test_triage_comment_renders_allowlisted_fork_links tests/test_issue_actions.py::test_triage_comment_escapes_markdown_model_text tests/test_dashboard.py::test_dashboard_renders_database_rows_safely` | R3, F1 |
