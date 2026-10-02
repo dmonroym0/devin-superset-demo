@@ -48,5 +48,5 @@ Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/re
 | 2026-10-02 08:28:51 | fork | LIVE: `devin:fixplease` added to #3; route comment "Fix" at 08:34:26 | |
 | 2026-10-02 08:39:44 | fork | PR #9 opened (urllib3 2.7.0 → 2.8.0, draft) by the LIVE fix session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8; `devin:pr-opened` 08:40:02 | First PR opened end-to-end by the service. |
 | 2026-10-02 15:31:13 | fork | LIVE upstream sync: `master` d2fb52ac83 → 0fdfd6660e (45 upstream commits, no merge commit) | PRs #6–#9 still mergeable, no conflicts. |
-| 2026-10-02 15:31:17 | fork | PR #10 opened: `FORK_CHANGELOG.md` for d2fb52a..0fdfd66 | `License Check` fails: the file lacks the Apache header. |
+| 2026-10-02 15:31:17 | fork | PR #10 opened: `FORK_CHANGELOG.md` for d2fb52a..0fdfd66 | `License Check` fails: the file lacks the Apache header (https://github.com/dmonroym0/devin-superset-demo/issues/26). |
 | now | fork | PRs #6–#10 still **open**; issue #2 closed by the service; #1, #3, #4, #5 open | No CVE is fixed on fork master. |
