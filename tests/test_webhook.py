@@ -19,11 +19,13 @@ def _payload(
     repo: str = "dmonroym0/superset",
     pull_request: bool = False,
     state: str = "open",
+    title: str = "Demo issue",
+    body: str = "Untrusted issue text",
 ) -> bytes:
     issue = {
         "number": issue_number,
-        "title": "Demo issue",
-        "body": "Untrusted issue text",
+        "title": title,
+        "body": body,
         "labels": [{"name": label}],
         "state": state,
         "html_url": f"https://demo.invalid/issues/{issue_number}",
@@ -131,6 +133,39 @@ def test_demo_webhook_keeps_existing_closed_issue_state(tmp_path, fake_devin):
     assert issue.state == "closed"
     assert "devin:in-progress" in issue.labels
     assert "devin:fixplease" in issue.labels
+
+
+def test_demo_webhook_updates_existing_title_and_body_preserving_state_and_labels(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    github = app.state.deps.github
+    github.add_issue(
+        Issue(
+            number=1,
+            title="Old title",
+            body="Old body",
+            labels=("devin:low-priority",),
+            state="closed",
+        )
+    )
+    body = _payload(
+        1,
+        title="Updated webhook title",
+        body="This issue reports CVE-2026-9999.",
+    )
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post(
+            "/webhooks/github",
+            content=body,
+            headers=_headers(body, delivery="update-existing-demo-issue"),
+        )
+
+    assert response.status_code == 202
+    issue = github.issues[1]
+    assert issue.title == "Updated webhook title"
+    assert issue.body == "This issue reports CVE-2026-9999."
+    assert issue.state == "closed"
+    assert set(issue.labels) == {"devin:low-priority", "devin:fixplease"}
 
 
 def test_demo_webhook_adds_trigger_label_to_unknown_issue(tmp_path, fake_devin):
