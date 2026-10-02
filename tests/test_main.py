@@ -102,6 +102,8 @@ def _recovery_app(test_settings):
     github = SeededFakeGitHub.from_seed()
     devin = ScenarioFakeDevin.from_scenarios()
     app = create_app(test_settings, github=github, devin=devin, clock=lambda: 100.0)
+    app.state.deps.db.init_schema()
+    app.state.deps.db.claim_mode(test_settings.mode.value)
     app.state.deps.background.clear()
     return app, github, devin
 

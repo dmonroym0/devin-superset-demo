@@ -42,7 +42,7 @@
         "polls": 3,
         "pull_requests": [
           {
-            "pr_url": "https://demo.invalid/dmonroym0/superset/pull/101",
+            "pr_url": "https://github.com/dmonroym0/superset/pull/101",
             "pr_state": "open"
           }
         ]

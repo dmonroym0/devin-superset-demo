@@ -29,7 +29,7 @@ def _payload(
         "html_url": f"https://demo.invalid/issues/{issue_number}",
     }
     if pull_request:
-        issue["pull_request"] = {"url": "https://demo.invalid/pull/1"}
+        issue["pull_request"] = {"url": "https://github.com/dmonroym0/superset/pull/1"}
     payload = {
         "action": "labeled",
         "label": {"name": label},
@@ -103,6 +103,51 @@ def test_relabelled_cancelled_issue_is_revived_by_webhook(tmp_path, fake_devin):
         assert row.state is IssueState.SEEN
         assert row.route_reason is None
         assert "devin:fixplease" in app.state.deps.github.issues[77].labels
+
+
+def test_demo_webhook_keeps_existing_closed_issue_state(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    github = app.state.deps.github
+    github.add_issue(
+        Issue(
+            number=1,
+            title="Existing closed issue",
+            body="Original fake state",
+            labels=("devin:in-progress",),
+            state="closed",
+        )
+    )
+    body = _payload(1, state="open")
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post(
+            "/webhooks/github",
+            content=body,
+            headers=_headers(body, delivery="delayed-open-snapshot"),
+        )
+
+    assert response.status_code == 202
+    issue = github.issues[1]
+    assert issue.state == "closed"
+    assert "devin:in-progress" in issue.labels
+    assert "devin:fixplease" in issue.labels
+
+
+def test_demo_webhook_adds_trigger_label_to_unknown_issue(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    github = app.state.deps.github
+    body = _payload(9876)
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post(
+            "/webhooks/github",
+            content=body,
+            headers=_headers(body, delivery="new-demo-issue"),
+        )
+
+    assert response.status_code == 202
+    assert github.issues[9876].state == "open"
+    assert "devin:fixplease" in github.issues[9876].labels
 
 
 def test_failed_webhook_accept_can_retry_same_delivery(tmp_path, fake_devin):
