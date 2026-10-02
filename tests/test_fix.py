@@ -1,3 +1,4 @@
+import sqlite3
 from dataclasses import replace
 
 import pytest
@@ -13,7 +14,16 @@ from test_triage import ScriptedDevin
 
 from app.fake_devin import FakeDevin
 from app.fix import check_fix, start_fix
-from app.models import IssueState, RouteAction, RouteDecision, SessionInfo, Stage, TriageResult
+from app.models import (
+    IssueState,
+    PullRequestRef,
+    RouteAction,
+    RouteDecision,
+    SessionInfo,
+    Stage,
+    TriageResult,
+)
+from app.pipeline import _recover_claims_after_restart, tick
 
 
 async def advance_to_fixing(tmp_path, number=1):
@@ -118,9 +128,7 @@ async def test_settled_without_pr_is_needs_human(tmp_path):
         ("error", None, "fix session errored (no detail)"),
     ],
 )
-async def test_settled_fix_preserves_suspended_and_error_reasons(
-    tmp_path, status, status_detail, reason
-):
+async def test_settled_fix_preserves_suspended_and_error_reasons(tmp_path, status, status_detail, reason):
     deps, actions = await advance_to_fixing(tmp_path, 1)
     session = deps.db.list_sessions(stage=Stage.FIX, issue_number=1)[0]
     scripted = ScriptedDevin()
@@ -131,6 +139,43 @@ async def test_settled_fix_preserves_suspended_and_error_reasons(
 
     assert deps.db.get_issue(1).route_reason == reason
     assert ("mark_needs_human", 1, reason) in actions.calls
+
+
+async def test_failed_atomic_pr_transition_keeps_fix_session_active_for_retry(tmp_path):
+    deps, actions = await advance_to_fixing(tmp_path, 1)
+    session = deps.db.list_sessions(stage=Stage.FIX, issue_number=1)[0]
+    pr_result = SessionInfo(
+        session.session_id,
+        "exit",
+        status_detail="finished",
+        pull_requests=(PullRequestRef("https://github.com/dmonroym0/superset/pull/42"),),
+    )
+    poll_results = [pr_result, pr_result]
+
+    async def get_pr_result(session_id):
+        return poll_results.pop(0)
+
+    deps.devin.get_session = get_pr_result
+    deps.db._connection.execute(
+        "CREATE TRIGGER fail_pr_opened BEFORE UPDATE OF state ON issues "
+        "WHEN NEW.state='pr_opened' BEGIN SELECT RAISE(ABORT, 'boom'); END"
+    )
+    deps.db._connection.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        await check_fix(deps, session, actions)
+
+    assert deps.db.get_issue(1).state is IssueState.FIXING
+    assert deps.db.get_session(session.session_id).settled_at is None
+
+    deps.db._connection.execute("DROP TRIGGER fail_pr_opened")
+    deps.db._connection.commit()
+    await _recover_claims_after_restart(deps, actions)
+    await tick(deps, actions)
+
+    assert deps.db.get_issue(1).state is IssueState.PR_OPENED
+    assert deps.db.get_session(session.session_id).settled_at is not None
+    assert len([request for request in deps.devin.requests if "stage-fix" in request.tags]) == 1
 
 
 async def test_fix_budget_refusal_keeps_triaged(tmp_path):

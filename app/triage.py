@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.db import IssueRow, SessionRow
 from app.devin_client import DevinError
-from app.escalation import archive_triage, check_stuck, notify
+from app.escalation import archive_triage, check_stuck, escalate_if_overdue, is_transient_poll_error, notify
 from app.interfaces import Deps, ResolvedPlaybooks
 from app.issue_actions import queued_budget_retry_due
 from app.models import (
@@ -226,16 +226,25 @@ _NO_FACTS = IssueFacts(None, None, None, BumpKind.UNKNOWN)
 async def check_triage(deps: Deps, session_row: SessionRow, actions: IssueActions) -> None:
     db = deps.db
     number = session_row.issue_number
-    info = await deps.devin.get_session(session_row.session_id)
+    try:
+        info = await deps.devin.get_session(session_row.session_id)
+    except Exception as exc:
+        if is_transient_poll_error(exc) and await escalate_if_overdue(deps, session_row, actions):
+            return
+        raise
     update_session_row(deps, session_row, info)
     now = deps.clock()
 
     if info.pr_urls:
-        db.update_session(session_row.session_id, settled_at=now)
         decision = route(_NO_FACTS, None, rejected=True)
-        db.add_event(number, "triage_rejected", ", ".join(info.pr_urls), now)
-        if db.transition(
-            number, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, now, route_reason=decision.reason
+        if db.settle_and_transition(
+            session_row.session_id,
+            number,
+            [IssueState.TRIAGING],
+            IssueState.NEEDS_HUMAN,
+            now,
+            event=("triage_rejected", ", ".join(info.pr_urls)),
+            route_reason=decision.reason,
         ):
             await notify(
                 deps,
@@ -248,9 +257,15 @@ async def check_triage(deps: Deps, session_row: SessionRow, actions: IssueAction
 
     if info.status == "suspended":
         reason = f"triage session suspended ({info.status_detail or 'no detail'})"
-        db.update_session(session_row.session_id, settled_at=now)
-        if db.transition(number, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, now, route_reason=reason):
-            db.add_event(number, "triage_suspended", reason, now)
+        if db.settle_and_transition(
+            session_row.session_id,
+            number,
+            [IssueState.TRIAGING],
+            IssueState.NEEDS_HUMAN,
+            now,
+            event=("triage_suspended", reason),
+            route_reason=reason,
+        ):
             await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
         await archive_triage(deps, session_row)
         return
@@ -259,17 +274,30 @@ async def check_triage(deps: Deps, session_row: SessionRow, actions: IssueAction
         await check_stuck(deps, session_row, info, actions)
         return
 
-    db.update_session(session_row.session_id, settled_at=now)
     try:
         if info.status == "error":
             raise TriageParseError(f"session status {info.status}/{info.status_detail}")
         parse_triage_output(info.structured_output, number)
     except TriageParseError as exc:
         reason = f"triage output unusable: {exc}"
-        if db.transition(number, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, now, route_reason=reason):
-            db.add_event(number, "triage_invalid", reason, now)
+        if db.settle_and_transition(
+            session_row.session_id,
+            number,
+            [IssueState.TRIAGING],
+            IssueState.NEEDS_HUMAN,
+            now,
+            event=("triage_invalid", reason),
+            route_reason=reason,
+        ):
             await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
     else:
-        if db.transition(number, [IssueState.TRIAGING], IssueState.TRIAGED, now, triaged_at=now):
-            db.add_event(number, "triaged", session_row.session_id, now)
+        db.settle_and_transition(
+            session_row.session_id,
+            number,
+            [IssueState.TRIAGING],
+            IssueState.TRIAGED,
+            now,
+            event=("triaged", session_row.session_id),
+            triaged_at=now,
+        )
     await archive_triage(deps, session_row)

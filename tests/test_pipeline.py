@@ -261,6 +261,69 @@ async def test_http_status_poll_server_error_is_transient(tmp_path):
     assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(2))
 
 
+async def test_triage_hard_timeout_escalates_on_transient_poll_error(tmp_path):
+    deps = await make_deps(tmp_path, HARD_TIMEOUT_S="3")
+    actions = RecordingActions()
+    seed(deps, 2)
+
+    async def fail_poll(session_id):
+        raise DevinError(503, "GET", f"/sessions/{session_id}")
+
+    deps.devin.get_session = fail_poll
+    await tick(deps, actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE, issue_number=2)[0]
+
+    assert state(deps, 2) is IssueState.TRIAGING
+    assert deps.db.get_session(session.session_id).settled_at is None
+    assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(2))
+
+    deps.clock.now = session.created_at + 2
+    await tick(deps, actions)
+    assert state(deps, 2) is IssueState.TRIAGING
+
+    deps.clock.now = session.created_at + 4
+    await tick(deps, actions)
+
+    assert state(deps, 2) is IssueState.NEEDS_HUMAN
+    assert deps.db.get_session(session.session_id).settled_at is not None
+    assert any(event.kind == "escalated" for event in deps.db.list_events(2))
+
+
+async def test_fix_hard_timeout_escalates_on_transient_poll_error(tmp_path):
+    deps = await make_deps(tmp_path, HARD_TIMEOUT_S="3")
+    actions = RecordingActions()
+    seed(deps, 1)
+
+    for _ in range(10):
+        await tick(deps, actions)
+        if state(deps, 1) is IssueState.FIXING:
+            break
+    assert state(deps, 1) is IssueState.FIXING
+    session = deps.db.list_sessions(stage=Stage.FIX, issue_number=1)[0]
+
+    async def fail_poll(session_id):
+        raise DevinError(503, "GET", f"/sessions/{session_id}")
+
+    deps.devin.get_session = fail_poll
+    deps.clock.now = session.created_at
+    await tick(deps, actions)
+
+    assert state(deps, 1) is IssueState.FIXING
+    assert deps.db.get_session(session.session_id).settled_at is None
+    assert any(event.kind == "devin_poll_failed" for event in deps.db.list_events(1))
+
+    deps.clock.now = session.created_at + 2
+    await tick(deps, actions)
+    assert state(deps, 1) is IssueState.FIXING
+
+    deps.clock.now = session.created_at + 4
+    await tick(deps, actions)
+
+    assert state(deps, 1) is IssueState.NEEDS_HUMAN
+    assert deps.db.get_session(session.session_id).settled_at is not None
+    assert any(event.kind == "escalated" for event in deps.db.list_events(1))
+
+
 async def test_every_create_request_has_caps_tags_schema_and_repo(tmp_path):
     deps = await make_deps(tmp_path)
     seed(deps, 1, 2, 3, 4, 5)
@@ -293,9 +356,7 @@ async def test_restart_preserves_ambiguous_unattached_reservation(tmp_path):
     actions = RecordingActions()
     seed(deps, 2)
     assert deps.db.transition(2, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
-    definite_reservation = deps.budget.reserve(
-        2, Stage.TRIAGE, deps.settings.triage_acu_cap, deps.clock()
-    )
+    definite_reservation = deps.budget.reserve(2, Stage.TRIAGE, deps.settings.triage_acu_cap, deps.clock())
     reservation = deps.budget.reserve(2, Stage.TRIAGE, deps.settings.triage_acu_cap, deps.clock())
     assert definite_reservation is not None
     assert reservation is not None

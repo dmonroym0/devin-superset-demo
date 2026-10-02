@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from app.db import IssueRow, SessionRow
 from app.devin_client import DevinError
-from app.escalation import check_stuck, notify
+from app.escalation import check_stuck, escalate_if_overdue, is_transient_poll_error, notify
 from app.interfaces import Deps
 from app.issue_actions import queued_budget_retry_due
 from app.models import (
@@ -194,16 +194,26 @@ async def start_fix(
 async def check_fix(deps: Deps, session_row: SessionRow, actions: IssueActions) -> None:
     db = deps.db
     number = session_row.issue_number
-    info = await deps.devin.get_session(session_row.session_id)
+    try:
+        info = await deps.devin.get_session(session_row.session_id)
+    except Exception as exc:
+        if is_transient_poll_error(exc) and await escalate_if_overdue(deps, session_row, actions):
+            return
+        raise
     update_session_row(deps, session_row, info)
     now = deps.clock()
     if info.pr_urls:
-        db.update_session(session_row.session_id, settled_at=now)
         urls = info.pr_urls
-        if db.transition(
-            number, [IssueState.FIXING], IssueState.PR_OPENED, now, pr_url=urls[0], pr_opened_at=now
+        if db.settle_and_transition(
+            session_row.session_id,
+            number,
+            [IssueState.FIXING],
+            IssueState.PR_OPENED,
+            now,
+            event=("pr_opened", ", ".join(urls)),
+            pr_url=urls[0],
+            pr_opened_at=now,
         ):
-            db.add_event(number, "pr_opened", ", ".join(urls), now)
             await notify(deps, number, "mark_pr_opened", actions.mark_pr_opened(deps, number, urls))
         return
     if not is_settled(info):
@@ -216,7 +226,13 @@ async def check_fix(deps: Deps, session_row: SessionRow, actions: IssueActions) 
         if info.status == "error"
         else NO_PR_REASON
     )
-    db.update_session(session_row.session_id, settled_at=now)
-    if db.transition(number, [IssueState.FIXING], IssueState.NEEDS_HUMAN, now, route_reason=reason):
-        db.add_event(number, "fix_no_pr", session_row.session_id, now)
+    if db.settle_and_transition(
+        session_row.session_id,
+        number,
+        [IssueState.FIXING],
+        IssueState.NEEDS_HUMAN,
+        now,
+        event=("fix_no_pr", session_row.session_id),
+        route_reason=reason,
+    ):
         await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))

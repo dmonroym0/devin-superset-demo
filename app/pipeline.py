@@ -11,8 +11,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.db import SessionRow
-from app.devin_client import DevinError
-from app.escalation import notify
+from app.escalation import is_transient_poll_error, notify
 from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
 from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
@@ -22,17 +21,6 @@ from app.triage import check_triage, start_triage
 logger = logging.getLogger(__name__)
 
 _NON_TERMINAL = tuple(state for state in IssueState if state not in TERMINAL_STATES)
-
-
-def _is_transient_poll_error(exc: Exception) -> bool:
-    if isinstance(exc, DevinError):
-        return exc.status_code in {0, 429} or exc.status_code >= 500
-    if isinstance(exc, httpx.TransportError):
-        return True
-    if isinstance(exc, httpx.HTTPStatusError):
-        status_code = exc.response.status_code
-        return status_code == 429 or status_code >= 500
-    return False
 
 
 class IssueActions(Protocol):
@@ -61,7 +49,7 @@ async def _guard(deps: Deps, number: int, step: Awaitable[None], *, transient_ok
     try:
         await step
     except Exception as exc:  # noqa: BLE001
-        if transient_ok and _is_transient_poll_error(exc):
+        if transient_ok and is_transient_poll_error(exc):
             status_code = getattr(exc, "status_code", None)
             if status_code is None and isinstance(exc, httpx.HTTPStatusError):
                 status_code = exc.response.status_code

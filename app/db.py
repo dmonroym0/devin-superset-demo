@@ -168,9 +168,7 @@ class Database:
         """
         with self._lock:
             self._connection.executescript(schema)
-            columns = {
-                row["name"] for row in self._connection.execute("PRAGMA table_info(ledger)")
-            }
+            columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(ledger)")}
             if "create_started_at" not in columns:
                 self._connection.execute("ALTER TABLE ledger ADD COLUMN create_started_at REAL")
                 self._connection.commit()
@@ -271,8 +269,7 @@ class Database:
                 ).fetchone()
                 if existing["state"] == IssueState.CANCELLED.value:
                     self._connection.execute(
-                        "UPDATE issues SET title=?, state=?, route_reason=NULL, updated_at=? "
-                        "WHERE number=?",
+                        "UPDATE issues SET title=?, state=?, route_reason=NULL, updated_at=? WHERE number=?",
                         (issue.title, IssueState.SEEN.value, now, issue.number),
                     )
                     inserted = True
@@ -303,6 +300,32 @@ class Database:
                 ).fetchall()
         return [_issue_row(row) for row in rows]
 
+    def _transition_update(
+        self,
+        number: int,
+        from_states: Collection[IssueState],
+        to_state: IssueState,
+        now: float,
+        fields: dict[str, Any],
+    ) -> tuple[str, list[Any]] | None:
+        unknown = set(fields) - self._ISSUE_FIELDS
+        if unknown:
+            raise ValueError(f"unknown issue field(s): {', '.join(sorted(unknown))}")
+        state_values = [state.value for state in from_states]
+        if not state_values:
+            return None
+        assignments = ["state=?", "updated_at=?"]
+        values: list[Any] = [to_state.value, now]
+        for name, value in fields.items():
+            assignments.append(f"{name}=?")
+            values.append(value.value if isinstance(value, BumpKind) else value)
+        placeholders = ",".join("?" for _ in state_values)
+        values.extend([number, *state_values])
+        return (
+            f"UPDATE issues SET {', '.join(assignments)} WHERE number=? AND state IN ({placeholders})",
+            values,
+        )
+
     def transition(
         self,
         number: int,
@@ -311,26 +334,48 @@ class Database:
         now: float,
         **fields: Any,
     ) -> bool:
-        unknown = set(fields) - self._ISSUE_FIELDS
-        if unknown:
-            raise ValueError(f"unknown issue field(s): {', '.join(sorted(unknown))}")
-        state_values = [state.value for state in from_states]
-        if not state_values:
+        update = self._transition_update(number, from_states, to_state, now, fields)
+        if update is None:
             return False
-        assignments = ["state=?", "updated_at=?"]
-        values: list[Any] = [to_state.value, now]
-        for name, value in fields.items():
-            assignments.append(f"{name}=?")
-            values.append(value.value if isinstance(value, BumpKind) else value)
-        placeholders = ",".join("?" for _ in state_values)
-        values.extend([number, *state_values])
+        sql, values = update
         with self._lock:
-            cursor = self._connection.execute(
-                f"UPDATE issues SET {', '.join(assignments)} WHERE number=? AND state IN ({placeholders})",
-                values,
-            )
+            cursor = self._connection.execute(sql, values)
             self._connection.commit()
             return cursor.rowcount == 1
+
+    def settle_and_transition(
+        self,
+        session_id: str,
+        number: int,
+        from_states: Collection[IssueState],
+        to_state: IssueState,
+        now: float,
+        *,
+        event: tuple[str, str] | None = None,
+        **fields: Any,
+    ) -> bool:
+        update = self._transition_update(number, from_states, to_state, now, fields)
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.execute(
+                    "UPDATE sessions SET settled_at=?, updated_at=? WHERE session_id=?",
+                    (now, now, session_id),
+                )
+                transitioned = False
+                if update is not None:
+                    cursor = self._connection.execute(*update)
+                    transitioned = cursor.rowcount == 1
+                if transitioned and event is not None:
+                    self._connection.execute(
+                        "INSERT INTO events(issue_number, kind, detail, created_at) VALUES (?, ?, ?, ?)",
+                        (number, event[0], event[1], now),
+                    )
+                self._connection.commit()
+                return transitioned
+            except Exception:
+                self._connection.rollback()
+                raise
 
     def add_event(self, issue_number: int | None, kind: str, detail: str, now: float) -> None:
         with self._lock:

@@ -6,7 +6,10 @@ import logging
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING
 
+import httpx
+
 from app.db import SessionRow
+from app.devin_client import DevinError
 from app.interfaces import Deps
 from app.models import IssueState, SessionInfo, Stage
 
@@ -35,6 +38,17 @@ LIMIT_DETAILS = frozenset(
 )
 
 
+def is_transient_poll_error(exc: Exception) -> bool:
+    if isinstance(exc, DevinError):
+        return exc.status_code in {0, 429} or exc.status_code >= 500
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        return status_code == 429 or status_code >= 500
+    return False
+
+
 async def notify(deps: Deps, number: int, name: str, call: Awaitable[object]) -> None:
     """Run a GitHub-side action; failures are logged and recorded but never block the state machine."""
     try:
@@ -56,6 +70,32 @@ async def archive_triage(deps: Deps, row: SessionRow) -> None:
     deps.db.update_session(row.session_id, archived=True)
 
 
+async def escalate(deps: Deps, session_row: SessionRow, reason: str, actions: IssueActions) -> None:
+    now = deps.clock()
+    number = session_row.issue_number
+    active = IssueState.TRIAGING if session_row.stage is Stage.TRIAGE else IssueState.FIXING
+    if deps.db.settle_and_transition(
+        session_row.session_id,
+        number,
+        [active],
+        IssueState.NEEDS_HUMAN,
+        now,
+        event=("escalated", reason),
+        route_reason=reason,
+    ):
+        await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
+    await archive_triage(deps, session_row)
+
+
+async def escalate_if_overdue(deps: Deps, session_row: SessionRow, actions: IssueActions) -> bool:
+    now = deps.clock()
+    if now - session_row.created_at < deps.settings.hard_timeout_s:
+        return False
+    reason = f"{session_row.stage.value} session did not finish within {deps.settings.hard_timeout_s}s"
+    await escalate(deps, session_row, reason, actions)
+    return True
+
+
 async def check_stuck(deps: Deps, session_row: SessionRow, info: SessionInfo, actions: IssueActions) -> bool:
     now = deps.clock()
     settings = deps.settings
@@ -69,12 +109,7 @@ async def check_stuck(deps: Deps, session_row: SessionRow, info: SessionInfo, ac
     elif age >= settings.hard_timeout_s:
         reason = f"{session_row.stage.value} session did not finish within {settings.hard_timeout_s}s"
     if reason:
-        deps.db.update_session(session_row.session_id, settled_at=now, updated_at=now)
-        active = IssueState.TRIAGING if session_row.stage is Stage.TRIAGE else IssueState.FIXING
-        if deps.db.transition(number, [active], IssueState.NEEDS_HUMAN, now, route_reason=reason):
-            deps.db.add_event(number, "escalated", reason, now)
-            await notify(deps, number, "mark_needs_human", actions.mark_needs_human(deps, number, reason))
-        await archive_triage(deps, session_row)
+        await escalate(deps, session_row, reason, actions)
         return True
     if age >= settings.soft_timeout_s and not session_row.nudged:
         try:

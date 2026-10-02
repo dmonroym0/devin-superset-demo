@@ -408,5 +408,5 @@ async def test_suspended_fix_sessions_keep_existing_outcomes(tmp_path, pull_requ
     if pull_requests:
         assert deps.db.get_issue(1).pr_url == pull_requests[0].pr_url
     else:
-        assert deps.db.get_issue(1).route_reason == "fix session finished without a PR"
+        assert deps.db.get_issue(1).route_reason == "fix session suspended (paused)"
     assert devin.archived == []
