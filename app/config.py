@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -61,6 +62,8 @@ class Settings:
     db_path: str
     host: str
     port: int
+    # Host curls through Compose's 127.0.0.1:8000:8000 publish arrive from its 172.16/12 bridge gateway.
+    sweep_allowed_cidrs: tuple[str, ...] = ("127.0.0.0/8", "::1/128", "172.16.0.0/12")
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Settings:
@@ -93,6 +96,18 @@ class Settings:
         soft_timeout = integer("SOFT_TIMEOUT_S", 1800)
         hard_timeout = integer("HARD_TIMEOUT_S", 5400)
         port = integer("PORT", 8000)
+        sweep_allowed_cidrs = tuple(
+            part.strip()
+            for part in env.get("SWEEP_ALLOWED_CIDRS", "127.0.0.0/8,::1/128,172.16.0.0/12").split(",")
+            if part.strip()
+        )
+        try:
+            if not sweep_allowed_cidrs:
+                raise ValueError
+            for cidr in sweep_allowed_cidrs:
+                ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            problems.append("SWEEP_ALLOWED_CIDRS invalid")
         if triage_cap > ceiling:
             problems.append("TRIAGE_ACU_CAP invalid")
         if fix_cap > ceiling:
@@ -133,6 +148,7 @@ class Settings:
             db_path=env.get("DB_PATH", "data/forkfix.db"),
             host=env.get("HOST", "0.0.0.0"),
             port=port,
+            sweep_allowed_cidrs=sweep_allowed_cidrs,
         )
 
     def redacted(self) -> dict[str, str]:
