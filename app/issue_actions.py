@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 
 from app.github_client import GitHubError
@@ -21,6 +22,8 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
+_SAFE_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::\d+)?(?:/[A-Za-z0-9._~%/#?=&+:@!$,;*-]*)?$")
+
 
 def _escape(text: str) -> str:
     return (
@@ -31,6 +34,10 @@ def _escape(text: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def _safe_url(url: str) -> bool:
+    return _SAFE_URL.fullmatch(url) is not None
 
 
 def render_triage_comment(
@@ -67,11 +74,11 @@ def render_triage_comment(
             [
                 "",
                 "**Triage result rejected: the read-only triage session opened PR(s):**",
-                *(f"- <{_escape(url)}>" for url in rejected_pr_urls),
+                *(f"- <{url}>" if _safe_url(url) else "- (unsafe URL omitted)" for url in rejected_pr_urls),
             ]
         )
-    if result and result.comment_url:
-        lines.extend(["", f"[full triage comment]({_escape(result.comment_url)})"])
+    if result and result.comment_url and _safe_url(result.comment_url):
+        lines.extend(["", f"[full triage comment]({result.comment_url})"])
     lines.extend(["", "_Automated by devin-superset-demo._"])
     return "\n".join(lines)
 
@@ -135,7 +142,7 @@ async def apply_route(
 
 
 async def mark_pr_opened(deps: Deps, number: int, pr_urls: Sequence[str]) -> None:
-    urls = "\n".join(f"- <{_escape(url)}>" for url in pr_urls)
+    urls = "\n".join(f"- <{url}>" if _safe_url(url) else "- (unsafe URL omitted)" for url in pr_urls)
     body = f"{urls}\n\nOpened, not done: CI and review continue in the Devin session."
     await _comment(deps, number, body)
     await _add_labels(deps, number, [LABEL_PR_OPENED])
@@ -149,16 +156,26 @@ async def mark_needs_human(deps: Deps, number: int, reason: str) -> None:
 
 
 async def mark_queued_budget(deps: Deps, number: int, committed: int, ceiling: int) -> None:
-    issue = await _call(deps, number, lambda: deps.github.get_issue(number))
-    if issue is not None and LABEL_QUEUED_BUDGET in issue.labels:
-        return
     await _add_labels(deps, number, [LABEL_QUEUED_BUDGET])
-    await _comment(
+    for event in deps.db.list_events(issue_number=number):
+        if event.kind == "queued_budget_cleared":
+            break
+        if event.kind == "queued_budget_commented":
+            return
+    comment_url = await _comment(
         deps,
         number,
         f"Queued for the next retry: committed {committed} / ceiling {ceiling} ACUs.",
     )
+    if comment_url:
+        deps.db.add_event(
+            number,
+            "queued_budget_commented",
+            f"committed {committed} / ceiling {ceiling}",
+            deps.clock(),
+        )
 
 
 async def clear_queued_budget(deps: Deps, number: int) -> None:
     await _remove_label(deps, number, LABEL_QUEUED_BUDGET)
+    deps.db.add_event(number, "queued_budget_cleared", "label removed", deps.clock())

@@ -111,6 +111,20 @@ async def test_remove_404_and_retry_transient_status_once():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_post_does_not_retry_transient_status():
+    post = respx.post(f"{BASE}{REPO_PATH}/issues/4/comments").mock(return_value=httpx.Response(503))
+    client = HttpGitHubClient(_settings())
+    try:
+        with pytest.raises(GitHubError) as error:
+            await client.create_comment(4, "test comment")
+        assert error.value.status_code == 503
+        assert post.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_foreign_next_link_is_not_followed_and_error_hides_token():
     respx.get(f"{BASE}{REPO_PATH}/issues").mock(
         return_value=httpx.Response(

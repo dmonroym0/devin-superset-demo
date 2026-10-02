@@ -23,9 +23,12 @@ def register(app: FastAPI, deps: Deps) -> None:
                     return JSONResponse({"error": "payload too large"}, status_code=413)
             except ValueError:
                 pass
-        raw = await request.body()
-        if len(raw) > 1_048_576:
-            return JSONResponse({"error": "payload too large"}, status_code=413)
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 1_048_576:
+                return JSONResponse({"error": "payload too large"}, status_code=413)
+        raw = bytes(body)
 
         secret = deps.settings.github_webhook_secret
         if not secret:
@@ -85,6 +88,9 @@ def register(app: FastAPI, deps: Deps) -> None:
             return JSONResponse({"status": "ignored", "reason": "pull_request"})
         if "pull_request" in issue_data:
             return JSONResponse({"status": "ignored", "reason": "pull_request"})
+        state = issue_data.get("state")
+        if isinstance(state, str) and state != "open":
+            return JSONResponse({"status": "ignored", "reason": "closed"})
         if issue_number is None or issue_number <= 0:
             return JSONResponse({"error": "invalid json"}, status_code=400)
 
@@ -102,7 +108,6 @@ def register(app: FastAPI, deps: Deps) -> None:
             if isinstance(labels_data, list)
             else ()
         )
-        state = issue_data.get("state")
         state = state if isinstance(state, str) else "open"
         html_url = issue_data.get("html_url")
         html_url = html_url if isinstance(html_url, str) else ""
