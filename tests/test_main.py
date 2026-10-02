@@ -9,7 +9,7 @@ from app.db import SessionRow
 from app.fake_devin import FakeDevin as ScenarioFakeDevin
 from app.fake_github import FakeGitHub as SeededFakeGitHub
 from app.main import create_app
-from app.models import MANAGED_LABELS, IssueState, Stage
+from app.models import MANAGED_LABELS, IssueState, SessionRequest, Stage
 from app.pipeline import tick
 from app.playbooks import SchemaMismatch
 
@@ -182,3 +182,70 @@ async def test_startup_preserves_triaging_issue_with_active_session(test_setting
         assert deps.db.get_session("active-triage-2").settled_at is None
         assert deps.budget.committed() == 5
         assert not [event for event in deps.db.list_events(2) if event.kind == "recovered_after_restart"]
+
+
+async def test_startup_readopts_attached_triage_session_and_processes_it(test_settings):
+    settings = replace(test_settings, devin_mode_triage="fast")
+    app, github, devin = _recovery_app(settings)
+    deps = app.state.deps
+    existing_session = await devin.create_session(
+        SessionRequest(
+            prompt="triage issue",
+            title="triage dmonroym0/superset#3",
+            playbook_id="playbook-demo-triage",
+            max_acu_limit=settings.triage_acu_cap,
+            tags=("devin-superset-demo", "issue-3", "stage-triage"),
+            devin_mode=settings.devin_mode_triage,
+        )
+    )
+    assert existing_session.session_id == "demo-triage-3-1"
+    devin.requests.clear()
+
+    deps.db.init_schema()
+    deps.db.upsert_seen_issue(github.issues[3], deps.clock())
+    assert deps.db.transition(3, [IssueState.SEEN], IssueState.TRIAGING, deps.clock())
+    reservation = deps.budget.reserve(3, Stage.TRIAGE, settings.triage_acu_cap, deps.clock())
+    assert reservation is not None
+    assert deps.budget.attach(reservation, existing_session.session_id)
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        assert deps.db.get_issue(3).state is IssueState.TRIAGING
+        assert deps.budget.committed() == settings.triage_acu_cap
+        adopted = deps.db.get_session(existing_session.session_id)
+        assert adopted is not None
+        assert adopted.max_acu_limit == settings.triage_acu_cap
+        assert adopted.devin_mode == "fast"
+        assert adopted.created_at == deps.clock()
+        assert adopted.url is None
+        assert any(
+            event.kind == "readopted_after_restart" and event.detail == existing_session.session_id
+            for event in deps.db.list_events(3)
+        )
+
+        metrics = client.get("/metrics.json")
+        assert metrics.status_code == 200
+        adopted_metric = next(
+            session
+            for session in metrics.json()["sessions"]
+            if session["session_id"] == existing_session.session_id
+        )
+        assert adopted_metric["url"] is None
+        board = client.get("/")
+        assert board.status_code == 200
+        assert existing_session.session_id in board.text
+
+        for _ in range(8):
+            await tick(deps, app.state.issue_actions)
+
+        assert deps.db.get_issue(3).state is IssueState.PR_OPENED
+        triage_requests = [
+            request
+            for request in devin.requests
+            if "issue-3" in request.tags and "stage-triage" in request.tags
+        ]
+        assert triage_requests == []
+        fix_requests = [
+            request for request in devin.requests if "issue-3" in request.tags and "stage-fix" in request.tags
+        ]
+        assert len(fix_requests) == 1
+        assert deps.budget.committed() >= settings.triage_acu_cap

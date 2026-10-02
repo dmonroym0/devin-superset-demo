@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
 from app.budget import Budget
-from app.db import Database
+from app.db import Database, SessionRow
 from app.models import Stage
 
 
@@ -46,6 +46,34 @@ def test_cancel_unattached_reservations_only_cancels_matching_issue_and_stage(tm
     assert budget.cancel_unattached(1, Stage.TRIAGE) == 1
     assert budget.committed() == 25
     assert budget.cancel_unattached(1, Stage.TRIAGE) == 0
+
+    db.close()
+
+
+def test_attached_without_session_excludes_reservations_with_recorded_sessions(tmp_path):
+    db, budget = make_budget(tmp_path)
+    reservation_id = budget.reserve(3, Stage.TRIAGE, 5, 100.0)
+    assert reservation_id is not None
+    assert budget.attach(reservation_id, "demo-triage-3-1")
+
+    assert budget.attached_without_session(3, Stage.TRIAGE) == [(reservation_id, "demo-triage-3-1", 5, 100.0)]
+
+    db.insert_session(
+        SessionRow(
+            session_id="demo-triage-3-1",
+            issue_number=3,
+            stage=Stage.TRIAGE,
+            status="running",
+            status_detail=None,
+            devin_mode=None,
+            max_acu_limit=5,
+            acus_consumed=0.0,
+            url=None,
+            created_at=100.0,
+            updated_at=100.0,
+        )
+    )
+    assert budget.attached_without_session(3, Stage.TRIAGE) == []
 
     db.close()
 
