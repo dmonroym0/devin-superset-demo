@@ -1,8 +1,11 @@
 import pytest
 from test_pipeline import RecordingActions, make_deps, seed, state
 
+from app.db import SessionRow
 from app.fake_devin import FakeDevin
-from app.models import Confidence, IssueState, PullRequestRef, SessionInfo, Stage, Verdict
+from app.fix import check_fix
+from app.models import Confidence, IssueState, PullRequestRef, RouteAction, SessionInfo, Stage, Verdict
+from app.router import parse_issue_facts, route
 from app.triage import TriageParseError, check_triage, parse_triage_output, start_triage
 
 OUTPUT = {
@@ -44,6 +47,7 @@ class ScriptedDevin(FakeDevin):
 def test_parse_triage_output_maps_fields():
     result = parse_triage_output(OUTPUT, 1)
     first, second = result.cves
+    assert result.issue_number == 1
     assert first.verdict is Verdict.REACHABLE and first.confidence is Confidence.MEDIUM
     assert first.evidence == ("a.py:3 — calls foo",)
     assert second.confidence is None
@@ -57,6 +61,20 @@ def test_parse_triage_output_maps_fields():
 def test_parse_triage_output_rejects_invalid(output):
     with pytest.raises(TriageParseError):
         parse_triage_output(output, 1)
+
+
+def test_parse_triage_output_rejects_foreign_issue():
+    with pytest.raises(
+        TriageParseError,
+        match=r"triage output is for issue #2, expected #1",
+    ):
+        parse_triage_output({**OUTPUT, "issue_number": 2}, 1)
+
+
+@pytest.mark.parametrize("issue_number", ["1", True, None])
+def test_parse_triage_output_rejects_invalid_issue_number(issue_number):
+    with pytest.raises(TriageParseError):
+        parse_triage_output({**OUTPUT, "issue_number": issue_number}, 1)
 
 
 async def test_start_triage_creates_session_and_marks_in_progress(tmp_path):
@@ -130,6 +148,64 @@ async def test_pr_on_an_unsettled_poll_rejects_triage(tmp_path):
     assert devin.archived == [session.session_id]
 
 
+async def test_suspended_triage_goes_to_needs_human_without_routing(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    decision = route(
+        parse_issue_facts(deps.github.issues[1].body),
+        parse_triage_output(OUTPUT, 1),
+    )
+    assert decision.action is RouteAction.FIX
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "suspended",
+            status_detail="waiting_for_approval",
+            structured_output=OUTPUT,
+        )
+    )
+
+    await check_triage(deps, session, actions)
+
+    issue = deps.db.get_issue(1)
+    assert issue.state is IssueState.NEEDS_HUMAN
+    assert issue.route_reason == "triage session suspended (waiting_for_approval)"
+    assert "mark_needs_human" in actions.names(1)
+    assert any(event.kind == "triage_suspended" for event in deps.db.list_events(1))
+    assert devin.archived == [session.session_id]
+    assert not any("stage-fix" in request.tags for request in devin.requests)
+
+
+async def test_foreign_triage_output_goes_to_needs_human(tmp_path):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    await start_triage(deps, deps.db.get_issue(1), actions)
+    session = deps.db.list_sessions(stage=Stage.TRIAGE)[0]
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "running",
+            status_detail="finished",
+            structured_output={**OUTPUT, "issue_number": 2},
+        )
+    )
+
+    await check_triage(deps, session, actions)
+
+    issue = deps.db.get_issue(1)
+    assert issue.state is IssueState.NEEDS_HUMAN
+    assert issue.route_reason == "triage output unusable: triage output is for issue #2, expected #1"
+    assert "mark_needs_human" in actions.names(1)
+    assert devin.archived == [session.session_id]
+    assert not any("stage-fix" in request.tags for request in devin.requests)
+
+
 async def test_settled_valid_output_is_triaged_and_archived(tmp_path):
     devin = ScriptedDevin()
     deps = await make_deps(tmp_path, devin=devin)
@@ -169,3 +245,49 @@ async def test_unusable_output_is_needs_human(tmp_path, info):
     await check_triage(deps, session, actions)
     assert state(deps, 1) is IssueState.NEEDS_HUMAN
     assert "mark_needs_human" in actions.names(1)
+
+
+@pytest.mark.parametrize(
+    ("pull_requests", "expected_state"),
+    [
+        ((PullRequestRef("https://github.com/dmonroym0/superset/pull/1"),), IssueState.PR_OPENED),
+        ((), IssueState.NEEDS_HUMAN),
+    ],
+)
+async def test_suspended_fix_sessions_keep_existing_outcomes(tmp_path, pull_requests, expected_state):
+    devin = ScriptedDevin()
+    deps = await make_deps(tmp_path, devin=devin)
+    actions = RecordingActions()
+    seed(deps, 1)
+    deps.db.transition(1, [IssueState.SEEN], IssueState.FIXING, deps.clock())
+    session = SessionRow(
+        session_id="fix-1",
+        issue_number=1,
+        stage=Stage.FIX,
+        status="running",
+        status_detail="working",
+        devin_mode=None,
+        max_acu_limit=15,
+        acus_consumed=0.0,
+        url=None,
+        created_at=deps.clock(),
+        updated_at=deps.clock(),
+    )
+    deps.db.insert_session(session)
+    devin.script.append(
+        SessionInfo(
+            session.session_id,
+            "suspended",
+            status_detail="paused",
+            pull_requests=pull_requests,
+        )
+    )
+
+    await check_fix(deps, session, actions)
+
+    assert state(deps, 1) is expected_state
+    if pull_requests:
+        assert deps.db.get_issue(1).pr_url == pull_requests[0].pr_url
+    else:
+        assert deps.db.get_issue(1).route_reason == "fix session finished without a PR"
+    assert devin.archived == []

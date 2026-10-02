@@ -23,9 +23,12 @@ def register(app: FastAPI, deps: Deps) -> None:
                     return JSONResponse({"error": "payload too large"}, status_code=413)
             except ValueError:
                 pass
-        raw = await request.body()
-        if len(raw) > 1_048_576:
-            return JSONResponse({"error": "payload too large"}, status_code=413)
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > 1_048_576:
+                return JSONResponse({"error": "payload too large"}, status_code=413)
+            body.extend(chunk)
+        raw = bytes(body)
 
         secret = deps.settings.github_webhook_secret
         if not secret:
