@@ -16,7 +16,7 @@ from app.fix import check_fix, route_triaged
 from app.interfaces import Deps
 from app.models import TERMINAL_STATES, IssueState, RouteDecision, Stage, TriageResult
 from app.playbooks import resolve_playbooks
-from app.triage import SETTLED_STATUSES, check_triage, start_triage, update_session_row
+from app.triage import SETTLED_STATUSES, check_triage, start_triage
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,14 @@ async def refresh_settled_sessions(deps: Deps) -> None:
             continue
         try:
             info = await deps.devin.get_session(row.session_id)
-            update_session_row(deps, row, info)
+            deps.db.update_session(
+                row.session_id,
+                status=info.status,
+                status_detail=info.status_detail,
+                acus_consumed=info.acus_consumed,
+                url=info.url or row.url,
+                updated_at=deps.clock(),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "settled Devin session refresh failed for %s: %s",

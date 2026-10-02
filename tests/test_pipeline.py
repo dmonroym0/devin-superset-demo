@@ -253,6 +253,27 @@ async def test_tick_refreshes_archived_triage_session_status_once(tmp_path):
     assert calls == [row.session_id]
 
 
+async def test_settled_session_refresh_keeps_structured_output(tmp_path):
+    deps = await make_deps(tmp_path)
+    actions = RecordingActions()
+    seed(deps, 2)
+    deps.db.transition(2, [IssueState.SEEN], IssueState.TRIAGED, deps.clock())
+    row = add_settled_session(deps, 2, Stage.TRIAGE)
+    structured_output = {"cves": [], "notes": "preserve triage evidence"}
+    deps.db.update_session(row.session_id, structured_output=structured_output)
+
+    async def get_suspended_session(session_id):
+        return SessionInfo(session_id, status="suspended", structured_output=None)
+
+    deps.devin.get_session = get_suspended_session
+
+    await tick(deps, actions)
+
+    updated = deps.db.get_session(row.session_id)
+    assert updated.status == "suspended"
+    assert updated.structured_output == structured_output
+
+
 async def test_tick_refreshes_settled_fix_status_without_side_effects(tmp_path):
     deps = await make_deps(tmp_path)
     actions = RecordingActions()
