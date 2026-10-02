@@ -21,11 +21,11 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 
 | Name | Status | Files | How to see it | Requirement |
 |---|---|---|---|---|
-| Webhook intake (HMAC, redelivery dedupe, fork-only) | planned | app/webhook.py | `pytest tests/test_webhook.py` | R1, Q6 |
-| Periodic sweep + local POST /sweep | planned | app/sweep.py | `curl -X POST localhost:8000/sweep` | R1, Q4 |
-| GitHub client + seeded fake | planned | app/github_client.py, app/fake_github.py | `pytest tests/test_github_client.py` | R13, G |
-| Issue actions (auto-create labels, comment, label, close) | planned | app/issue_actions.py | `pytest tests/test_issue_actions.py` | R3, R7, Q2 |
-| Signed webhook simulate script | planned | scripts/simulate_webhook.py | `python scripts/simulate_webhook.py --issue 1` | R15 |
+| Webhook intake (HMAC, redelivery dedupe, fork-only) | built | app/webhook.py | `pytest tests/test_webhook.py` | R1, Q6 |
+| Periodic sweep + local POST /sweep | built | app/sweep.py | `curl -X POST localhost:8000/sweep` | R1, Q4 |
+| GitHub client + seeded fake | built | app/github_client.py, app/fake_github.py | `pytest tests/test_github_client.py` | R13, G |
+| Issue actions (auto-create labels, comment, label, close) | built | app/issue_actions.py | `pytest tests/test_issue_actions.py` | R3, R7, Q2 |
+| Signed webhook simulate script | built | scripts/simulate_webhook.py | `python scripts/simulate_webhook.py --issue 1` | R15 |
 
 ## Devin side (child B)
 
