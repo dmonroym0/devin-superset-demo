@@ -72,7 +72,11 @@ class HttpGitHubClient:
                 logger.warning("GitHub request %s %s -> 0", method, safe_path)
                 raise GitHubError(0, method, safe_path) from err
             logger.info("GitHub request %s %s -> %s", method, safe_path, response.status_code)
-            if response.status_code in {502, 503, 504} and attempt == 0:
+            if (
+                method in {"GET", "PUT", "PATCH", "DELETE"}
+                and response.status_code in {502, 503, 504}
+                and attempt == 0
+            ):
                 continue
             if response.status_code >= 400 and response.status_code not in ok_statuses:
                 raise GitHubError(response.status_code, method, safe_path)

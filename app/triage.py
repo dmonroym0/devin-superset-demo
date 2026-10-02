@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from app.db import IssueRow, SessionRow
 from app.escalation import archive_triage, check_stuck, notify
 from app.interfaces import Deps, ResolvedPlaybooks
+from app.issue_actions import queued_budget_retry_due
 from app.models import (
     FORK_REPO,
     BumpKind,
@@ -116,6 +117,7 @@ async def start_triage(deps: Deps, issue_row: IssueRow, actions: IssueActions) -
         db.transition(number, [IssueState.TRIAGING], IssueState.QUEUED_BUDGET, deps.clock())
         if not was_queued:
             db.add_event(number, "queued_budget", f"triage cap {cap} refused", deps.clock())
+        if not was_queued or queued_budget_retry_due(db, number):
             await notify(
                 deps,
                 number,

@@ -88,6 +88,9 @@ def register(app: FastAPI, deps: Deps) -> None:
             return JSONResponse({"status": "ignored", "reason": "pull_request"})
         if "pull_request" in issue_data:
             return JSONResponse({"status": "ignored", "reason": "pull_request"})
+        state = issue_data.get("state")
+        if isinstance(state, str) and state != "open":
+            return JSONResponse({"status": "ignored", "reason": "closed"})
         if issue_number is None or issue_number <= 0:
             return JSONResponse({"error": "invalid json"}, status_code=400)
 
@@ -105,7 +108,6 @@ def register(app: FastAPI, deps: Deps) -> None:
             if isinstance(labels_data, list)
             else ()
         )
-        state = issue_data.get("state")
         state = state if isinstance(state, str) else "open"
         html_url = issue_data.get("html_url")
         html_url = html_url if isinstance(html_url, str) else ""

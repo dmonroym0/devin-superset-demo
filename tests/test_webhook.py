@@ -18,13 +18,14 @@ def _payload(
     label: str = "devin:fixplease",
     repo: str = "dmonroym0/superset",
     pull_request: bool = False,
+    state: str = "open",
 ) -> bytes:
     issue = {
         "number": issue_number,
         "title": "Demo issue",
         "body": "Untrusted issue text",
         "labels": [{"name": label}],
-        "state": "open",
+        "state": state,
         "html_url": f"https://demo.invalid/issues/{issue_number}",
     }
     if pull_request:
@@ -97,6 +98,15 @@ def test_webhook_rejects_signatures_and_oversized_payloads(tmp_path, fake_devin)
         response = client.post("/webhooks/github", content=oversized, headers=_headers(oversized))
         assert response.status_code == 413
         assert response.json() == {"error": "payload too large"}
+
+
+def test_webhook_streams_oversized_chunked_payload(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    chunks = (chunk for chunk in (b"x" * 600_000, b"x" * 600_000))
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/webhooks/github", content=chunks)
+    assert response.status_code == 413
+    assert response.json() == {"error": "payload too large"}
 
 
 def test_chunked_oversized_webhook_is_rejected(tmp_path, fake_devin):
@@ -176,6 +186,16 @@ def test_webhook_ignores_other_events_labels_repositories_and_pull_requests(tmp_
             assert response.status_code == 200
             assert response.json() == {"status": "ignored", "reason": reason}
         assert app.state.deps.db.get_issue(1) is None
+
+
+def test_webhook_ignores_closed_labeled_issue(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    body = _payload(6, state="closed")
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/webhooks/github", content=body, headers=_headers(body))
+        assert response.status_code == 200
+        assert response.json() == {"status": "ignored", "reason": "closed"}
+        assert app.state.deps.db.get_issue(6) is None
 
 
 def test_missing_delivery_id_and_live_disabled_webhook(tmp_path, fake_devin):
