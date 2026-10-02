@@ -96,14 +96,21 @@ def _paginate(client: httpx.Client, path: str) -> list[dict]:
     return items
 
 
+def _delete_label(client: httpx.Client, issue_path: str, name: str) -> None:
+    response = client.delete(f"{issue_path}/labels/{quote(name, safe='')}")
+    if response.status_code != 404:
+        response.raise_for_status()
+
+
 def apply_plan(client: httpx.Client, repo: str, plan: Plan, *, recreate: bool) -> str | None:
     issue_path = f"/repos/{repo}/issues/{plan.number}"
+    if TRIGGER_LABEL in plan.remove_labels:
+        _delete_label(client, issue_path, TRIGGER_LABEL)
     if plan.reopen:
         client.patch(issue_path, json={"state": "open"}).raise_for_status()
     for name in plan.remove_labels:
-        response = client.delete(f"{issue_path}/labels/{quote(name, safe='')}")
-        if response.status_code != 404:
-            response.raise_for_status()
+        if name != TRIGGER_LABEL:
+            _delete_label(client, issue_path, name)
     for comment_id, _ in plan.delete_comments:
         response = client.delete(f"/repos/{repo}/issues/comments/{comment_id}")
         if response.status_code != 404:

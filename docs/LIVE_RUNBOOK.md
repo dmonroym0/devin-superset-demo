@@ -100,7 +100,7 @@ python scripts/demo_reset.py 2 3 5 --apply --remove-trigger
 python scripts/demo_reset.py 2 --apply --recreate     # also opens a fresh copy (same title/body, original labels) and removes devin:fixplease from #2
 ```
 - The script only touches the issue numbers you pass. It removes only `devin:*` service labels, and keeps `devin:fixplease` unless you pass `--remove-trigger` or `--recreate`.
-- It deletes only comments that you posted and whose whole body matches one of the service's comment templates (quoted or edited copies are kept). It reopens an issue only if you closed it as `not_planned` and it has `devin:low-priority`; it reopens before removing anything, so a failed run can simply be rerun.
+- It deletes only comments that you posted and whose whole body matches one of the service's comment templates (quoted or edited copies are kept). It reopens an issue only if you closed it as `not_planned` and it has `devin:low-priority`; it removes `devin:fixplease` (if asked to), then reopens, then removes the rest, so a running service never sees a reopened issue that still has the trigger, and a failed run can simply be rerun.
 - Limitation: an issue you closed by hand as `not_planned` while it had `devin:low-priority` looks the same as a service close and will be reopened (https://github.com/dmonroym0/devin-superset-demo/issues/21).
 - It reads `GITHUB_TOKEN` from the environment and never prints it.
 - It doesn't close PRs that Devin opened. Close those on GitHub yourself.

@@ -227,3 +227,31 @@ def test_recreate_removes_trigger_from_original(capsys):
     assert code == 0
     assert removed
     assert "remove label devin:fixplease" in out
+
+
+def test_trigger_is_removed_before_reopen(capsys):
+    closed = _issue(
+        2,
+        labels=["security", "devin:fixplease", "devin:low-priority"],
+        state="closed",
+        state_reason="not_planned",
+        closed_by="daniel",
+    )
+    with respx.mock(base_url=BASE) as router:
+        _mock_reads(router, 2, closed, comments=[])
+        router.patch(f"{REPO}/issues/2").respond(json={})
+        router.delete(url__regex=r".*").respond(204)
+        router.post(f"{REPO}/issues").respond(
+            201, json={"html_url": "https://github.com/dmonroym0/superset/issues/44"}
+        )
+        code, _ = _run(router, ["2", "--apply", "--recreate"], capsys)
+        writes = [
+            (call.request.method, call.request.url.path)
+            for call in router.calls
+            if call.request.method != "GET"
+        ]
+    assert code == 0
+    assert writes[:2] == [
+        ("DELETE", f"{REPO}/issues/2/labels/devin:fixplease"),
+        ("PATCH", f"{REPO}/issues/2"),
+    ]
