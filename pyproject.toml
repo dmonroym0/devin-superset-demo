@@ -34,5 +34,3 @@ testpaths = ["tests"]
 line-length = 110
 target-version = "py311"
 
-[tool.ruff.format]
-exclude = ["app/interfaces.py"]
