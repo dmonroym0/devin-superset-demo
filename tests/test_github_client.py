@@ -189,6 +189,33 @@ async def test_get_branch_sha_reads_commit_sha():
 
 
 @pytest.mark.asyncio
+@respx.mock
+async def test_get_file_decodes_content_and_returns_none_for_missing_file():
+    content = "# Fork changelog\n\n## Upstream sync — caf\u00e9\n"
+    route = respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "content": base64.b64encode(content.encode()).decode(),
+                    "encoding": "base64",
+                    "sha": "file-sha",
+                },
+            ),
+            httpx.Response(404, json={"message": "Not Found"}),
+        ]
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        assert await client.get_file("FORK_CHANGELOG.md", "master") == content
+        assert await client.get_file("FORK_CHANGELOG.md", "master") is None
+        assert route.call_count == 2
+        assert [call.request.url.params["ref"] for call in route.calls] == ["master", "master"]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status", "payload", "outcome"),
     [
@@ -265,12 +292,18 @@ async def test_compare_returns_commit_subjects_merge_flags_and_files():
         await client.aclose()
 
 
-def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status=404):
+def _mock_changelog_pr_routes(*, ref_status=201, pull_status=201, content_status=404, existing_content=None):
     ref = respx.post(f"{BASE}{REPO_PATH}/git/refs").mock(
         return_value=httpx.Response(ref_status, json={"message": "Reference already exists"})
     )
+    content_payload = {"sha": "old-file-sha"}
+    if existing_content is not None:
+        content_payload.update(
+            content=base64.b64encode(existing_content.encode()).decode(),
+            encoding="base64",
+        )
     content_get = respx.get(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
-        return_value=httpx.Response(content_status, json={"sha": "old-file-sha"})
+        return_value=httpx.Response(content_status, json=content_payload)
     )
     content_put = respx.put(f"{BASE}{REPO_PATH}/contents/FORK_CHANGELOG.md").mock(
         return_value=httpx.Response(201, json={"content": {"sha": "new-file-sha"}})
@@ -348,6 +381,33 @@ async def test_create_changelog_pr_continues_when_branch_ref_exists():
         assert ref.call_count == 1
         assert content_put.call_count == 1
         assert pulls_post.call_count == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_changelog_pr_updates_existing_file_with_contents_sha():
+    branch = "devin/fork-changelog-abcdef123456"
+    previous_content = "# Fork changelog\n\n## Previous sync\n"
+    _, content_get, content_put, _, _ = _mock_changelog_pr_routes(
+        content_status=200,
+        existing_content=previous_content,
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        await client.create_changelog_pr(
+            "master",
+            "a" * 40,
+            branch,
+            previous_content + "\n## New sync\n",
+            "docs(fork-changelog): update",
+            "Summary",
+        )
+        payload = json.loads(content_put.calls[0].request.content)
+        assert content_get.calls[0].request.url.params["ref"] == branch
+        assert payload["branch"] == branch
+        assert payload["sha"] == "old-file-sha"
     finally:
         await client.aclose()
 

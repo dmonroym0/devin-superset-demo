@@ -220,9 +220,7 @@ class HttpGitHubClient:
         return self._to_issue(response.json())
 
     async def get_branch_sha(self, branch: str) -> str:
-        response = await self._request(
-            "GET", f"{self._repo_path}/branches/{quote(branch, safe='')}"
-        )
+        response = await self._request("GET", f"{self._repo_path}/branches/{quote(branch, safe='')}")
         return response.json()["commit"]["sha"]
 
     async def merge_upstream(self, branch: str) -> MergeUpstreamResult:
