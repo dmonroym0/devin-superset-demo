@@ -11,6 +11,8 @@ Label an issue `devin:fixplease`. The service then:
 
 It runs with zero keys in **DEMO** mode (`docker compose up`) and against GitHub and Devin API v3 in **LIVE** mode.
 
+![The board's Overview page in DEMO mode: five fork issues, two PRs opened, two needing a human, one closed as not reachable](docs/img/board.png)
+
 ## Where to look first
 
 | You're looking for… | Go to |
@@ -30,7 +32,7 @@ DEMO mode replays scripted outcomes; the same code also ran against the real for
 
 - **Issue #3 (urllib3):** read-only triage posted a per-CVE reachability analysis, routed to fix, and opened draft PR [#9](https://github.com/dmonroym0/superset/pull/9) (Devin session: https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8).
 - **Issue #2 (python-multipart):** all listed CVEs not reachable — the service commented, applied `devin:low-priority`, and closed the issue as not planned.
-- **Upstream sync:** opened changelog PR [#10](https://github.com/dmonroym0/superset/pull/10) from a `merge-upstream` commit range, on its own branch.
+- **Upstream sync:** ran twice; each run opened a changelog PR from its `merge-upstream` commit range, on its own branch ([#10](https://github.com/dmonroym0/superset/pull/10) for d2fb52a..0fdfd66, [#11](https://github.com/dmonroym0/superset/pull/11) for 0fdfd66..bc3698b).
 - Earlier fix sessions opened PRs [#6](https://github.com/dmonroym0/superset/pull/6), [#7](https://github.com/dmonroym0/superset/pull/7) (stacked with [#8](https://github.com/dmonroym0/superset/pull/8)) on the fork. All PRs are **opened, not merged**.
 - **Cost:** the whole project — building the service with Devin, the audits, and the LIVE runs — cost about **$150 of on-demand usage on top of a Devin Pro plan** (Settings → Usage & Limits, which reports $ and % of quota). Per-issue ACUs can't be quoted: Devin reports `acus_consumed` 0 for every session on this plan ([#17](https://github.com/dmonroym0/devin-superset-demo/issues/17)), so the per-session caps are the control.
 
@@ -162,6 +164,7 @@ curl -X POST http://127.0.0.1:8000/sync-upstream
 
 ## Design decisions
 
+- **The customer's constraint: GitHub plus HTTPS to `api.devin.ai`, nothing else.** No Slack and nothing to install on their side. That is why the trigger is a GitHub label (`devin:fixplease`) and every Devin call goes through the Devin API v3. Comments, labels and PRs on the issue are the only feedback channel.
 - **Two separate ACU budgets.** At runtime, each session gets a hard `max_acu_limit` (triage 5, fix 15), and the ledger refuses any reservation that would push the total granted caps past `ACU_CEILING` (default **120 across all issues, not per issue**). Metered `acus_consumed` reads 0.0 inside the included quota, so the caps are the real control. Actual `acus_consumed` is still recorded per session. The build budget (the ACUs spent building this repo) is separate.
 - **Routing is per issue, not per CVE.** One version bump fixes every CVE in the issue. If any CVE is reachable with confidence ≥ medium and the bump isn't major, the service fixes it. The comment still lists every other CVE's verdict, including unknown ones. `needs-human` applies only when no CVE qualifies or the bump is major. If every CVE is not reachable, the issue is commented on, labeled low priority, and closed.
 - **Read-only triage is enforced in code.** A triage session that reports any `pull_requests` is rejected: its result is discarded and the issue gets `devin:triage-rejected` and `devin:needs-human`.

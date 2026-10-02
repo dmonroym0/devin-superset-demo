@@ -1,14 +1,14 @@
 # TIMELINE (oldest first, UTC)
 
-Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/review timestamps, `git log`. "Session" links come from PR bodies and comments. **No fork PR is merged** as of 2026-10-02 17:30 UTC.
+Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/review timestamps, `git log`. "Session" links come from PR bodies and comments. **No fork PR is merged** as of 2026-10-02 21:50 UTC.
 
 | When (UTC) | Repo | Event | Why it mattered |
 |---|---|---|---|
-| 2026-10-01 06:33:19 | fork | Issue #1 opened: jaraco-context 6.0.1 → 6.1.0 (`security`) | |
-| 2026-10-01 06:33:20 | fork | Issue #2 opened: python-multipart 0.0.29 → 0.0.31 | |
-| 2026-10-01 06:33:21 | fork | Issue #3 opened: urllib3 2.7.0 → 2.8.0 | |
-| 2026-10-01 06:33:23 | fork | Issue #4 opened: pytest 7.4.4 → 9.0.3 | |
-| 2026-10-01 06:35:51 | fork | Issue #5 opened: fast-uri 3.1.7 → 3.1.8 | These five issues are the DEMO seed data. |
+| 2026-10-01 06:33:19 | fork | Issue #1 opened: jaraco-context 6.0.1 → 6.1.0 (`security`) by `devin-ai-integration[bot]` (Devin session https://app.devin.ai/sessions/3f181bfa2dfa4592b98eb60c30ee56b9, "Create Security Upgrade Issues") | |
+| 2026-10-01 06:33:20 | fork | Issue #2 opened: python-multipart 0.0.29 → 0.0.31 by `devin-ai-integration[bot]`, same session | |
+| 2026-10-01 06:33:21 | fork | Issue #3 opened: urllib3 2.7.0 → 2.8.0 by `devin-ai-integration[bot]`, same session | |
+| 2026-10-01 06:33:23 | fork | Issue #4 opened: pytest 7.4.4 → 9.0.3 by `devin-ai-integration[bot]`, same session | |
+| 2026-10-01 06:35:51 | fork | Issue #5 opened: fast-uri 3.1.7 → 3.1.8 by `devin-ai-integration[bot]`, same session | These five issues are the DEMO seed data. All five were opened by Devin's GitHub app, not by a person or by this service. |
 | 2026-10-01 06:51:44 | fork | PR #6 opened (jaraco-context bump, Closes #1). Session https://app.devin.ai/sessions/98aa8416df4946948c56758fe753b547 | First Devin dependency fix. It used the repo's compile script and disclosed the Docker Hub 429 fallback. |
 | 2026-10-01 06:51:47 | fork | PR #6: Devin PR-monitoring comment ("I'll fix CI failures and address comments…") | Shows PR monitoring was on. |
 | 2026-10-01 06:57:01 | fork | PR #6: Devin Review, "No Issues Found" | |
@@ -44,9 +44,15 @@ Sources: `gh issue list` / `gh pr list --json createdAt,mergedAt`, PR comment/re
 | 2026-10-02 08:12:38–41 | demo | Issues #7, #8, #9 filed (cross-origin POST, stale session status, features.md README row) | Pre-audit findings, P2. |
 | 2026-10-02 08:18:26–36 | demo | Audit issues #10–#16 filed (see TEST_REPORT) | #10 (duplicate-PR risk) changes the LIVE runbook. |
 | 2026-10-02 08:22:43 | fork | LIVE: `devin:fixplease` added to #2 | First real run of the service against the fork. |
+| 2026-10-02 08:25:58 | fork | LIVE triage comment on #2 by `devin-ai-integration[bot]`: 3 × not reachable | |
 | 2026-10-02 08:27:11 | fork | #2 closed `not_planned` by the service after its "Not reachable" comment (08:27:07) and `devin:low-priority` (08:27:08) | Triage saved a fix session: no CVE reachable. |
-| 2026-10-02 08:28:51 | fork | LIVE: `devin:fixplease` added to #3; route comment "Fix" at 08:34:26 | |
-| 2026-10-02 08:39:44 | fork | PR #9 opened (urllib3 2.7.0 → 2.8.0, draft) by the LIVE fix session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8; `devin:pr-opened` 08:40:02 | First PR opened end-to-end by the service. |
+| 2026-10-02 08:28:51 | fork | LIVE: `devin:fixplease` added to #3; `devin:in-progress` 08:29:17 | |
+| 2026-10-02 08:33:22 | fork | LIVE triage of #3: comment 5948272855 by `devin-ai-integration[bot]` from read-only triage session https://app.devin.ai/sessions/482f049dcce9483486d53c6d77a46eb3 (HEAD d2fb52ac83): -97688, -97689 reachable, -97687 not | The verdict the router acted on. |
+| 2026-10-02 08:34:26 | fork | Service route comment on #3: "Fix: opening a Devin fix session" | Two reachable CVEs, minor bump → FIX. |
+| 2026-10-02 08:39:44 | fork | PR #9 opened (urllib3 2.7.0 → 2.8.0, draft) by `devin-ai-integration[bot]` from the LIVE fix session https://app.devin.ai/sessions/56160d44a4c843c3a49e949cfa7070a8; service "Opened, not done" comment 08:40:01, `devin:pr-opened` 08:40:02 | First PR opened end-to-end by the service. |
 | 2026-10-02 15:31:13 | fork | LIVE upstream sync: `master` d2fb52ac83 → 0fdfd6660e (45 upstream commits, no merge commit) | PRs #6–#9 still mergeable, no conflicts. |
 | 2026-10-02 15:31:17 | fork | PR #10 opened: `FORK_CHANGELOG.md` for d2fb52a..0fdfd66 | `License Check` fails: the file lacks the Apache header (https://github.com/dmonroym0/devin-superset-demo/issues/26). |
-| now | fork | PRs #6–#10 still **open**; issue #2 closed by the service; #1, #3, #4, #5 open | No CVE is fixed on fork master. |
+| 2026-10-02 19:02:20 | fork | Second LIVE upstream sync: `master` 0fdfd6660e → bc3698b5d6 (12 upstream commits, no merge commit) | PRs #6–#9 still mergeable, no conflicts. |
+| 2026-10-02 19:02:24 | fork | PR #11 opened: `FORK_CHANGELOG.md` for 0fdfd66..bc3698b | Same `License Check` failure as #10 (https://github.com/dmonroym0/devin-superset-demo/issues/26). |
+| 2026-10-02 21:40:14–21:41:34 | fork | PR #9 marked ready for review by `dmonroym0`, then back to draft | Re-triggered #9's checks. |
+| now | fork | PRs #6–#11 still **open**; issue #2 closed by the service; #1, #3, #4, #5 open | No CVE is fixed on fork master. |
