@@ -1,0 +1,97 @@
+{
+  "repo_notes": [
+    {
+      "content": "forkfix is a small FastAPI + SQLite service (app/) that turns a GitHub issue labeled devin:fixplease on the fork dmonroym0/superset into Devin sessions: a read-only triage session that judges CVE reachability, a per-issue routing decision (app/router.py), and a fix session that opens a draft PR. It runs in DEMO mode with fake GitHub/Devin clients (app/fake_github.py, app/fake_devin.py) and in LIVE mode against GitHub and Devin API v3. Prioritize the issue state machine (app/pipeline.py, app/db.py), the ACU budget ledger (app/budget.py), routing rules, the playbooks in playbooks/, and the dashboard (app/dashboard.py, app/metrics.py, app/templates/, app/static/, app/i18n/). Source of truth for behavior is README.md and features.md; README.es.md is a translation.",
+      "author": "dmonroym0"
+    },
+    {
+      "content": "The English pages use English. Pages under the parent page 'Documentación en español' are an experiment: write them entirely in Latin American Spanish (es-419), addressing the reader as tú, and keep these engineering terms in English: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline, webhook, upstream, fork. Use docs/es/GLOSSARY.md for every other term (for example ceiling = tope, cap = límite, sweep = búsqueda, triage = triaje). Keep code identifiers, file paths, env var names and commands verbatim.",
+      "author": "dmonroym0"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "What forkfix does end to end, who it is for, DEMO vs LIVE mode, and how the pieces in app/ fit together. Include the flow from labeled issue to draft PR."
+    },
+    {
+      "title": "Issue lifecycle and state machine",
+      "purpose": "The issue states in app/models.py and app/db.py (seen, queued_budget, triaging, triaged, fixing, pr_opened, needs_human, not_reachable, error, cancelled), the compare-and-set transitions, and how the webhook and the sweep avoid double processing.",
+      "parent": "Overview"
+    },
+    {
+      "title": "Triage, routing and fix sessions",
+      "purpose": "How app/triage.py, app/router.py and app/fix.py create Devin sessions from the playbooks in playbooks/, the structured triage output schema in schemas/, and the routing rules (fix, needs_human, close_low_priority).",
+      "parent": "Overview"
+    },
+    {
+      "title": "ACU budget ledger",
+      "purpose": "app/budget.py: per-session caps (triage 5, fix 15), the global ceiling, reservations and releases, and what happens when a reservation is refused (queued_budget).",
+      "parent": "Overview"
+    },
+    {
+      "title": "GitHub and Devin integration",
+      "purpose": "app/github_client.py, app/devin_client.py, app/webhook.py and app/sweep.py: webhook signature checks, the sweep, labels and comments, Devin API v3 calls, and the fake clients used in DEMO mode."
+    },
+    {
+      "title": "Upstream sync",
+      "purpose": "app/upstream_sync.py and app/changelog.py: the scheduled sync from apache/superset into the fork and the changelog PR."
+    },
+    {
+      "title": "Dashboard and telemetry",
+      "purpose": "app/dashboard.py, app/metrics.py, app/templates/ and app/static/: the overview, pipeline, issue detail, sessions and cost views, the /metrics.json fields, in-place polling, and the rule that no history is invented."
+    },
+    {
+      "title": "Localization",
+      "purpose": "app/i18n/ (en.json, es.json, Translator, Accept-Language negotiation, the forkfix_lang cookie), docs/es/GLOSSARY.md, and the tests that enforce key parity and no hard-coded English in templates.",
+      "parent": "Dashboard and telemetry"
+    },
+    {
+      "title": "Configuration and deployment",
+      "purpose": "app/config.py environment variables, app/preflight.py checks, the Dockerfile and docker-compose.yml, and how to run DEMO and LIVE."
+    },
+    {
+      "title": "Testing",
+      "purpose": "The tests/ suite, how DEMO end-to-end runs work (scripts/simulate_webhook.py), and the lint and test commands."
+    },
+    {
+      "title": "Documentación en español",
+      "purpose": "Experimental Spanish section. Introduce, in Spanish, what forkfix is and link to the child pages. Explain that README.md is the source of truth and README.es.md is its translation.",
+      "page_notes": [
+        { "content": "Escribe esta página completamente en español de Latinoamérica, tratando al lector de tú. Sigue docs/es/GLOSSARY.md. Deja en inglés: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline, webhook, upstream, fork." }
+      ]
+    },
+    {
+      "title": "Ciclo de vida de un issue",
+      "purpose": "Spanish version of the issue lifecycle: states, transitions, triage, routing and fix sessions.",
+      "parent": "Documentación en español",
+      "page_notes": [
+        { "content": "Escribe esta página completamente en español de Latinoamérica, tratando al lector de tú. Sigue docs/es/GLOSSARY.md. Deja en inglés: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline, webhook, upstream, fork. Los nombres de estados y archivos van tal cual, en formato de código." }
+      ]
+    },
+    {
+      "title": "Presupuesto de ACU",
+      "purpose": "Spanish version of the ACU budget ledger page: límite por sesión, tope global, reservas y la espera por presupuesto.",
+      "parent": "Documentación en español",
+      "page_notes": [
+        { "content": "Escribe esta página completamente en español de Latinoamérica, tratando al lector de tú. Usa 'tope' para el ceiling global y 'límite' para el cap de cada sesión; nunca los intercambies. Deja en inglés: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline." }
+      ]
+    },
+    {
+      "title": "Dashboard y telemetría",
+      "purpose": "Spanish version of the dashboard page: las vistas, los campos de /metrics.json, el selector EN | ES y la insignia de datos de demostración.",
+      "parent": "Documentación en español",
+      "page_notes": [
+        { "content": "Escribe esta página completamente en español de Latinoamérica, tratando al lector de tú. Sigue docs/es/GLOSSARY.md. Deja en inglés: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline, dashboard." }
+      ]
+    },
+    {
+      "title": "Configuración y ejecución",
+      "purpose": "Spanish version of configuration and deployment: variables de entorno, modo DEMO y LIVE, Docker y las pruebas.",
+      "parent": "Documentación en español",
+      "page_notes": [
+        { "content": "Escribe esta página completamente en español de Latinoamérica, tratando al lector de tú. Los comandos, variables de entorno y rutas de archivos van tal cual, en bloques de código. Deja en inglés: CVE, PR, ACU, Devin, playbook, DeepWiki, issue, pipeline, webhook." }
+      ]
+    }
+  ]
+}

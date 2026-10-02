@@ -1,0 +1,56 @@
+{% macro chip(view) %}<span class="chip tone-{{ view.tone }}">{{ view.label }}</span>{% endmacro %}
+
+{% macro node(state, size=20) %}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+{% if state == "done" %}
+  <circle cx="10" cy="10" r="8" fill="currentColor"/>
+  <path d="M6.2 10.2l2.5 2.5 5-5.2" fill="none" style="stroke: var(--bg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+{% elif state == "active" %}
+  <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <circle class="pulse" cx="10" cy="10" r="3.75" fill="currentColor"/>
+{% elif state == "waiting" %}
+  <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2.7"/>
+  <path d="M10 6.5V10l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+{% elif state == "stopped" %}
+  <path d="M10 1.8l8.2 8.2-8.2 8.2-8.2-8.2z" fill="currentColor"/>
+  <path d="M10 6v4.6" style="stroke: var(--bg)" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="10" cy="13.6" r="1.1" style="fill: var(--bg)"/>
+{% elif state == "failed" %}
+  <rect x="2.5" y="2.5" width="15" height="15" rx="2" fill="currentColor"/>
+  <path d="M7 7l6 6M13 7l-6 6" style="stroke: var(--bg)" stroke-width="1.8" stroke-linecap="round"/>
+{% elif state == "skipped" %}
+  <path d="M5 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+{% else %}
+  <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+{% endif %}
+</svg>
+{% endmacro %}
+
+{% macro track(t, issue, large=False) %}
+<ol class="track{{ ' large' if large }}" aria-label="{{ t('track.label', number=issue.number) }}">
+  {% set ns = namespace(reached=True) %}
+  {% for stage in issue.track %}
+  <li data-key="{{ stage.key }}" data-state="{{ stage.state }}" data-reached="{{ 'true' if stage.state in ('done', 'stopped', 'failed', 'active', 'waiting') else 'false' }}">
+    <span class="node">{{ node(stage.state, 28 if large else 20) }}</span>
+    <span class="stage-name">{{ stage.label }}</span>
+    <span class="stage-state">{{ stage.state_label }}</span>
+    {% if large %}
+    <span class="stage-time">{% if stage.duration %}{{ stage.duration }}{% elif stage.started_at %}<time datetime="{{ stage.started_at }}">{{ t.datetime(stage.started_at) }}</time>{% else %}{{ t('common.none') }}{% endif %}</span>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% endmacro %}
+
+{% macro reason(view) %}{% if view %}<span lang="{{ view.lang }}">{{ view.text }}</span>{% endif %}{% endmacro %}
+
+{% macro define(t, id, text) %}
+<span class="define">
+  <button type="button" aria-describedby="{{ id }}" aria-label="{{ t('common.definition') }}">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="4.9" r="0.9" fill="currentColor"/></svg>
+  </button>
+  <span role="tooltip" id="{{ id }}">{{ text }}</span>
+</span>
+{% endmacro %}
+
+{% macro issue_link(t, issue) %}<a href="{{ issue.url }}">{{ t('links.issue', number=issue.number) }}</a>{% endmacro %}

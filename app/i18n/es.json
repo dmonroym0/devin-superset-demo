@@ -1,0 +1,295 @@
+{
+  "app": {
+    "name": "Forkfix",
+    "name_long": "Operaciones de Forkfix",
+    "description": "Muestra qué hace el pipeline de correcciones de seguridad con cada issue, qué necesita a una persona y cuánto costó."
+  },
+  "nav": {
+    "skip": "Ir al contenido",
+    "label": "Principal",
+    "overview": "Resumen",
+    "pipeline": "Pipeline",
+    "sessions": "Sesiones",
+    "cost": "Costo"
+  },
+  "demo": {
+    "badge": "Datos de demostración",
+    "definition": "Modo DEMO: GitHub y Devin están simulados y solo se muestran los issues de ejemplo. Nada de esto es actividad real."
+  },
+  "lang": {
+    "label": "Idioma",
+    "en": "EN",
+    "es": "ES",
+    "en_name": "English",
+    "es_name": "Español",
+    "separator": "|"
+  },
+  "actions": {
+    "sweep": "Buscar issues ahora"
+  },
+  "live": {
+    "rendered": "Datos del {time}"
+  },
+  "common": {
+    "issue_number": "#{number}",
+    "none": "—",
+    "definition": "Ver definición",
+    "colon": ":",
+    "period": "."
+  },
+  "links": {
+    "open_on_github": "Abrir issue en GitHub",
+    "issue": "Issue #{number}",
+    "pr": "PR #{number}",
+    "session_triage": "Sesión de triaje",
+    "session_fix": "Sesión de corrección"
+  },
+  "overview": {
+    "title": "Resumen",
+    "heading": "Correcciones de seguridad para {repo}",
+    "issues_seen": "Issues detectados",
+    "prs_opened": "PR abiertos",
+    "needs_human": "Necesitan a una persona",
+    "automation_rate": "Tasa de automatización",
+    "automation_rate_definition": "Porcentaje de issues terminados que el pipeline resolvió por sí solo: (PR abiertos + no alcanzables) ÷ (PR abiertos + no alcanzables + necesitan a una persona). No incluye issues en curso, con error ni cancelados.",
+    "median_time_to_pr": "Mediana de tiempo hasta el PR",
+    "median_time_to_pr_definition": "Mediana del tiempo entre la primera detección de un issue y la apertura de su PR de corrección, entre los issues que tienen PR.",
+    "acu_committed": "ACU comprometidos",
+    "acu_of": "{committed} de {ceiling}",
+    "acu_definition": "Cada sesión de Devin reserva su límite de ACU contra el tope antes de empezar. Los comprometidos son la suma de esas reservas, no el uso medido.",
+    "acu_left": "Quedan {remaining} antes de que las sesiones nuevas esperen presupuesto",
+    "acu_full": "Se alcanzó el tope: las sesiones nuevas esperan hasta que lo subas o se liberen reservas",
+    "attention_heading": "Necesitan a una persona ({count})",
+    "error_hint": "El pipeline se detuvo por un error. Revisa el historial y luego quita y vuelve a poner la etiqueta para reintentar.",
+    "attention_empty": "Por ahora nada necesita a una persona.",
+    "pipeline_heading": "Pipeline",
+    "pipeline_details": "Ver veredictos y enlaces",
+    "empty_title": "Todavía no hay issues",
+    "empty_body": "Agrega la etiqueta {label} a un issue de Dependabot en {repo} y busca issues para que el pipeline lo tome."
+  },
+  "sync": {
+    "heading": "Sincronización con upstream",
+    "off": "La sincronización con upstream está desactivada. Configura UPSTREAM_SYNC_ENABLED para activarla.",
+    "never": "La sincronización con upstream está activada, pero todavía no se ha ejecutado.",
+    "last": "Última ejecución: {outcome}, {time}.",
+    "outcome": {
+      "merged": "se integraron los cambios de upstream",
+      "conflict": "se detuvo por un conflicto de merge",
+      "none": "ya estaba al día",
+      "error": "falló"
+    },
+    "changelog_pr": "PR del changelog",
+    "conflict_issue": "Issue del conflicto #{number}"
+  },
+  "stage": {
+    "seen": "Detectado",
+    "triage": "Triaje",
+    "route": "Decisión",
+    "fix": "Corrección",
+    "pr": "PR"
+  },
+  "track": {
+    "label": "Etapas del pipeline para el issue #{number}",
+    "done": "Listo",
+    "active": "En curso",
+    "waiting": "Sin presupuesto",
+    "stopped": "Revisión humana",
+    "failed": "Falló",
+    "skipped": "Omitido",
+    "pending": "Sin iniciar"
+  },
+  "state": {
+    "seen": "Detectado",
+    "queued_budget": "Esperando presupuesto",
+    "triaging": "En triaje",
+    "triaged": "Triaje listo",
+    "fixing": "Corrigiendo",
+    "pr_opened": "PR abierto",
+    "needs_human": "Necesita a una persona",
+    "not_reachable": "No alcanzable",
+    "error": "Error",
+    "cancelled": "Cancelado"
+  },
+  "verdict": {
+    "REACHABLE": "Alcanzable",
+    "NOT_REACHABLE": "No alcanzable",
+    "UNKNOWN": "Sin determinar"
+  },
+  "verdicts": {
+    "summary": "{reachable} de {total} CVE alcanzables"
+  },
+  "confidence": {
+    "high": "Alta",
+    "medium": "Media",
+    "low": "Baja",
+    "missing": "No indicada (cuenta como baja)"
+  },
+  "route": {
+    "fix": "Enviado a corrección",
+    "needs_human": "Enviado a una persona",
+    "close_low_priority": "Cerrado por baja prioridad"
+  },
+  "reason": {
+    "major_bump": "Cambio de versión mayor {old} → {new}; una persona debe revisarlo.",
+    "reachable": "Alcanzables con confianza media o alta: {ids}.",
+    "all_not_reachable": "Ningún CVE de la lista es alcanzable.",
+    "none_qualifying": "Ningún CVE es alcanzable con confianza media o alta.",
+    "bump_unknown": "No se pudo confirmar que el cambio no sea de versión mayor.",
+    "no_triage": "El triaje no devolvió un resultado utilizable.",
+    "no_cve_ids": "El issue no menciona identificadores de CVE, así que no se puede verificar el triaje.",
+    "triage_opened_pr": "La sesión de triaje abrió un PR, y no debe hacerlo.",
+    "issue_closed": "Se cerró el issue.",
+    "label_removed": "Se quitó la etiqueta de activación.",
+    "create_unknown": "No está claro si la sesión empezó; su reserva de ACU se conserva hasta que alguien lo revise.",
+    "fix_no_pr": "La sesión de corrección terminó sin abrir un PR.",
+    "suspended": "La sesión de {stage} se suspendió ({detail}).",
+    "errored": "La sesión de {stage} terminó con un error.",
+    "timed_out": "La sesión de {stage} no terminó en {limit} s.",
+    "stopped": "La sesión de {stage} se detuvo: {detail}.",
+    "triage_unusable": "No se pudo usar la salida del triaje: {detail}."
+  },
+  "bump": {
+    "major": "versión mayor",
+    "minor": "versión menor",
+    "patch": "parche",
+    "unknown": "tipo de cambio desconocido"
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "heading": "Pipeline",
+    "subheading": "Una fila por issue: en qué etapa está, qué encontró el triaje y por qué se envió a donde se envió.",
+    "version_change": "{old} → {new}"
+  },
+  "issue": {
+    "title": "Issue #{number}",
+    "missing_title": "Este issue no está en seguimiento",
+    "missing_body": "Forkfix no ha visto este issue. Revisa el número o agrega la etiqueta de activación en GitHub y busca issues.",
+    "back": "Volver al pipeline",
+    "timeline": "Cronología de etapas",
+    "last_error": "Último error",
+    "evidence": "Evidencia del triaje",
+    "col_cve": "CVE",
+    "col_verdict": "Veredicto",
+    "col_confidence": "Confianza",
+    "col_evidence": "Evidencia",
+    "no_evidence": "No se indicó evidencia de archivo:línea.",
+    "gates": "Condiciones",
+    "no_gates": "ninguna",
+    "default_on": "alcanzable en una instalación predeterminada",
+    "default_off": "no alcanzable en una instalación predeterminada",
+    "evidence_pending": "La evidencia aparece aquí cuando termina el triaje.",
+    "evidence_missing": "El triaje no devolvió evidencia para este issue. Abre la sesión de triaje para ver qué pasó.",
+    "history": "Historial",
+    "show_raw": "Ver registro sin procesar",
+    "history_empty": "Todavía no hay eventos registrados para este issue."
+  },
+  "sessions": {
+    "title": "Sesiones",
+    "heading": "Sesiones de Devin",
+    "subheading": "Cada sesión que inició el pipeline, de la más reciente a la más antigua, con su límite de ACU y lo que reportó el plan.",
+    "col_session": "Sesión",
+    "col_issue": "Issue",
+    "col_stage": "Etapa",
+    "col_mode": "Modo de Devin",
+    "col_cap": "Límite de ACU",
+    "col_consumed": "ACU consumidos",
+    "col_status": "Estado",
+    "col_duration": "Duración",
+    "org_default": "predeterminado de la organización",
+    "not_reported": "el plan no lo reporta",
+    "not_yet": "aún sin reportar",
+    "empty_title": "Todavía no hay sesiones",
+    "empty_body": "Las sesiones empiezan cuando la búsqueda toma un issue etiquetado. Busca issues para iniciar una."
+  },
+  "session_status": {
+    "running": "En curso",
+    "blocked": "Bloqueada",
+    "suspended": "Suspendida",
+    "error": "Error",
+    "finished": "Terminada",
+    "expired": "Vencida"
+  },
+  "units": {
+    "seconds": "{s} s",
+    "minutes_seconds": "{m} min {s} s",
+    "hours_minutes": "{h} h {m} min",
+    "acus": "{value} ACU",
+    "percent": "{value} %"
+  },
+  "formats": {
+    "datetime": "{day} {month}, {time} UTC"
+  },
+  "months": "ene,feb,mar,abr,may,jun,jul,ago,sep,oct,nov,dic",
+  "cost": {
+    "title": "Costo",
+    "heading": "Costo",
+    "subheading": "ACU reservados contra el tope, en total y por issue.",
+    "committed_heading": "ACU comprometidos frente al tope",
+    "committed_question": "¿Qué tan cerca está el pipeline de su tope de ACU?",
+    "chart_desc": "{count} reservas activas suman {committed} ACU frente a un tope de {ceiling} ACU.",
+    "ceiling_label": "Tope {ceiling} ACU",
+    "committed_label": "Comprometidos {committed} ACU",
+    "short_history": "Reservas hasta ahora: {count}, todas en {span}. Están demasiado juntas para una gráfica en el tiempo, así que se muestran en orden.",
+    "unused": "Sin usar",
+    "step": "#{number} {stage}: {cap} ACU",
+    "no_reservations": "Todavía no hay ACU reservados. Las reservas aparecen cuando empieza una sesión.",
+    "cancelled_note": "Reservas canceladas que no se muestran: {count}. El registro no guarda cuándo se liberaron.",
+    "per_issue_heading": "ACU comprometidos por issue",
+    "per_issue_question": "¿Qué issues usaron el presupuesto?",
+    "split": "triaje {triage}, corrección {fix}",
+    "metered_heading": "ACU medidos",
+    "metered_total": "Devin reportó {value} ACU consumidos en todas las sesiones.",
+    "metered_none": "{count} sesiones terminadas reportan 0 ACU medidos. Toma los ACU comprometidos de arriba como el costo máximo posible.",
+    "metered_waiting": "Todavía no ha terminado ninguna sesión."
+  },
+  "event": {
+    "sweep": "La búsqueda lo encontró.",
+    "triage_started": "El triaje empezó en la sesión {session}.",
+    "triaged": "Terminó el triaje.",
+    "triaged_counts": "Terminó el triaje: {reachable} de {total} CVE alcanzables.",
+    "routed": "Decisión: {detail}.",
+    "routed_fix": "Enviado a corrección. {reason}",
+    "routed_needs_human": "Enviado a una persona. {reason}",
+    "routed_close_low_priority": "Cerrado por baja prioridad. {reason}",
+    "fix_started": "La corrección empezó en la sesión {session}.",
+    "pr_opened": "La corrección abrió {prs}.",
+    "fix_no_pr": "La sesión de corrección terminó sin un PR.",
+    "queued_budget": "Esperando presupuesto: el límite de {cap} ACU de {stage} no cabe bajo el tope.",
+    "queued_budget_commented": "Se publicó en el issue un comentario de espera de presupuesto ({committed} de {ceiling} ACU comprometidos).",
+    "queued_budget_comment_failed": "No se pudo publicar el comentario de espera de presupuesto ({committed} de {ceiling} ACU comprometidos).",
+    "queued_budget_cleared": "Terminó la espera de presupuesto.",
+    "cancelled_before_session": "Se canceló antes de que empezara una sesión.",
+    "triage_create_failed": "No se pudo iniciar la sesión de triaje.",
+    "fix_create_failed": "No se pudo iniciar la sesión de corrección.",
+    "triage_create_ambiguous": "No está claro si empezó la sesión de triaje; se verificará antes de reintentar.",
+    "fix_create_ambiguous": "No está claro si empezó la sesión de corrección; se verificará antes de reintentar.",
+    "devin_poll_failed": "No se pudo contactar a Devin para revisar la sesión. Se reintentará.",
+    "pipeline_error": "El pipeline se detuvo por un error.",
+    "readopted_after_restart": "Se retomó la sesión {session} después de un reinicio.",
+    "create_ambiguous_after_restart": "Después de un reinicio, no estaba claro si había empezado una sesión.",
+    "recovered_after_restart": "Se recuperó después de un reinicio.",
+    "github_error": "Falló una solicitud a GitHub.",
+    "action_failed": "Falló una acción de seguimiento.",
+    "archive_failed": "No se pudo archivar la sesión.",
+    "nudge_failed": "No se pudo recordar a la sesión que terminara.",
+    "nudged": "Se le pidió a la sesión {session} que terminara.",
+    "escalated": "Se escaló a una persona. {reason}",
+    "triage_rejected": "Se rechazó el triaje porque abrió un PR.",
+    "triage_suspended": "Se suspendió el triaje. {reason}",
+    "triage_invalid": "No se pudo usar la salida del triaje. {reason}",
+    "fallback": "Evento: {kind}.",
+    "webhook_accepted": "Se agregó la etiqueta en GitHub y se aceptó el webhook."
+  },
+  "js": {
+    "updated": "Actualizado {ago}",
+    "paused": "Actualizaciones en pausa mientras esta pestaña está oculta",
+    "offline": "No se puede contactar al servidor. Se muestran datos del {time}; se reintenta cada {seconds} s.",
+    "sweep": "Buscar issues ahora",
+    "sweep_running": "Buscando issues…",
+    "sweep_forbidden": "La búsqueda solo se ejecuta desde una dirección local permitida. Ejecútala desde el equipo donde corre Forkfix.",
+    "sweep_failed": "La búsqueda no pudo contactar a GitHub. Vuelve a intentarlo en un minuto.",
+    "sweep_offline": "No se puede contactar al servidor. Verifica que Forkfix esté en ejecución y vuelve a intentarlo.",
+    "sweep_done_one": "Búsqueda terminada: 1 issue nuevo.",
+    "sweep_done_other": "Búsqueda terminada: {count} issues nuevos ({found} etiquetados en total)."
+  }
+}
