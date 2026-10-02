@@ -39,7 +39,10 @@
   };
 
   const fingerprintOf = (data) => JSON.stringify([data.issues, data.acu.committed, data.acu.ceiling, data.upstream_sync, data.automation_rate, data.median_time_to_pr_s,
-    data.issues_detail.map((issue) => [issue.number, issue.state, issue.stage_track.map((stage) => [stage.state, stage.ended_at])]),
+    data.issues_detail.map((issue) => [
+      issue.number, issue.title, issue.state, issue.route, issue.cves, issue.caveats, issue.last_error, issue.pr_url, issue.updated_at,
+      issue.stage_track.map((stage) => [stage.state, stage.ended_at]),
+    ]),
     data.sessions.map((session) => [session.session_id, session.status, session.finished, session.acus_consumed]), (data.acu.reservations || []).length]);
 
   const swapRegions = async () => {
@@ -64,7 +67,7 @@
       if (!response.ok) throw new Error(String(response.status));
       const data = await response.json();
       const next = fingerprintOf(data);
-      if (fingerprint !== null && next !== fingerprint) await swapRegions();
+      if (fingerprint === null || next !== fingerprint) await swapRegions();
       fingerprint = next;
       lastUpdate = Date.now();
       failed = false;

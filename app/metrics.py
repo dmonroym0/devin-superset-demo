@@ -205,6 +205,27 @@ def _latest_routes(events: list[EventRow]) -> dict[int, dict]:
     return routes
 
 
+def _current_issue_run(
+    issue: IssueRow,
+    triage_session: SessionRow | None,
+    fix_session: SessionRow | None,
+    route: dict,
+) -> tuple[SessionRow | None, SessionRow | None, dict]:
+    empty_route = {"action": None, "reason": None, "at": None}
+    if issue.state in {IssueState.SEEN, IssueState.QUEUED_BUDGET}:
+        return None, None, empty_route
+    if issue.state is IssueState.TRIAGING:
+        return triage_session, None, empty_route
+
+    if triage_session is not None:
+        triage_started_at = triage_session.created_at
+        if route["at"] is not None and datetime.fromisoformat(route["at"]).timestamp() < triage_started_at:
+            route = empty_route
+        if fix_session is not None and fix_session.created_at < triage_started_at:
+            fix_session = None
+    return triage_session, fix_session, route
+
+
 def _stage_track(
     issue: IssueRow,
     triage_session: SessionRow | None,
@@ -230,8 +251,15 @@ def _stage_track(
         triage_started = triage_session.created_at
         triage_ended = triage_session.settled_at
         if triage_ended is None:
-            triage_state = "active"
-        elif issue.triaged_at is not None or route["at"] is not None:
+            if state is IssueState.ERROR:
+                triage_state = "failed"
+            elif state in {IssueState.CANCELLED, IssueState.NEEDS_HUMAN}:
+                triage_state = "stopped"
+            else:
+                triage_state = "active"
+        elif (issue.triaged_at is not None and issue.triaged_at >= triage_session.created_at) or route[
+            "at"
+        ] is not None:
             triage_state = "done"
         elif state is IssueState.NEEDS_HUMAN:
             triage_state = "stopped"
@@ -285,7 +313,12 @@ def _stage_track(
         fix_started = fix_session.created_at
         fix_ended = fix_session.settled_at
         if fix_ended is None:
-            fix_state = "active"
+            if state is IssueState.ERROR:
+                fix_state = "failed"
+            elif state in {IssueState.CANCELLED, IssueState.NEEDS_HUMAN}:
+                fix_state = "stopped"
+            else:
+                fix_state = "active"
         elif state is IssueState.PR_OPENED:
             fix_state = "done"
         elif state is IssueState.NEEDS_HUMAN:
@@ -407,6 +440,16 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
     branch = settings.upstream_sync_branch
     conflict_issue_number = db.get_meta(branch_meta_key("conflict_issue_number", branch))
     changelog_pr_url = db.get_meta(branch_meta_key("changelog_pr_url", branch))
+    issues_detail = []
+    for issue in issues:
+        sessions_for_issue = sessions_by_issue.get(issue.number, {})
+        triage_session, fix_session, route = _current_issue_run(
+            issue,
+            sessions_for_issue.get(Stage.TRIAGE.value),
+            sessions_for_issue.get(Stage.FIX.value),
+            routes_by_issue.get(issue.number, {"action": None, "reason": None, "at": None}),
+        )
+        issues_detail.append(_issue_detail(issue, triage_session, fix_session, route, now))
     return {
         "generated_at": _iso_timestamp(now),
         "mode": settings.mode.value,
@@ -433,14 +476,5 @@ def compute(db: Database, budget: Budget, settings: Settings, now: float) -> dic
             "changelog_through_sha": db.get_meta(branch_meta_key("changelog_through_sha", branch)),
         },
         "sessions": [_session_detail(session, now) for session in sessions],
-        "issues_detail": [
-            _issue_detail(
-                issue,
-                sessions_by_issue.get(issue.number, {}).get(Stage.TRIAGE.value),
-                sessions_by_issue.get(issue.number, {}).get(Stage.FIX.value),
-                routes_by_issue.get(issue.number, {"action": None, "reason": None, "at": None}),
-                now,
-            )
-            for issue in issues
-        ],
+        "issues_detail": issues_detail,
     }

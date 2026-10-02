@@ -85,7 +85,7 @@ Requirement IDs: UI1–UI5 are the five telemetry views, UI6 design system, UI7 
 | In-place polling of /metrics.json, paused while hidden | verified | app/static/app.js | open the board, run `python scripts/simulate_webhook.py --issue 1`, watch it update without a reload | UI7 |
 | Same-origin assets only (no CDNs) | verified | app/templates/base.html, app/static/ | `pytest tests/test_dashboard_views.py`; Playwright network log in the PR | UI8 |
 | Keyboard focus, reduced motion, 1440px and 390px layouts | verified | app/static/app.css, app/templates/ | axe + screenshots in the PR | UI9 |
-| Installable web app (manifest + icons) | built | app/dashboard.py, app/static/icons/ | Chrome or Edge: Install app from the address bar | UI10 |
+| Installable web app (manifest + icons) | verified | app/dashboard.py, app/static/icons/ | Chrome or Edge: Install app from the address bar | UI10 |
 | EN/ES catalogs, Accept-Language default, cookie, `<html lang>`, locale formatting | verified | app/i18n/, app/templates/base.html | `pytest tests/test_i18n.py`; click EN / ES in the header | UI11 |
 | Spanish README + glossary | built | README.es.md, docs/es/GLOSSARY.md | read them | UI11 |
 | DeepWiki config with experimental Spanish section | built | .devin/wiki.json | regenerate the wiki and check the "Documentación en español" pages | UI12 |

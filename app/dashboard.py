@@ -352,7 +352,11 @@ def register(app: FastAPI, deps: Deps) -> None:
                     "consumed": _acus_consumed(t, session),
                     "duration": t.duration(session.get("duration_s")),
                 }
-                for session in context["metrics"]["sessions"]
+                for session in sorted(
+                    context["metrics"]["sessions"],
+                    key=lambda session: (session["created_at"] or "", session["session_id"]),
+                    reverse=True,
+                )
             ]
             return {"rows": rows, "title": t("sessions.title")}
 

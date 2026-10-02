@@ -60,7 +60,7 @@
     "acu_left": "Quedan {remaining} antes de que las sesiones nuevas esperen presupuesto",
     "acu_full": "Se alcanzó el tope: las sesiones nuevas esperan hasta que lo subas o se liberen reservas",
     "attention_heading": "Necesitan a una persona ({count})",
-    "error_hint": "El pipeline se detuvo por un error. Revisa el historial y luego quita y vuelve a poner la etiqueta para reintentar.",
+    "error_hint": "El pipeline se detuvo por un error y no volverá a intentar este issue por su cuenta. Revisa el historial y atiende el issue a mano en GitHub.",
     "attention_empty": "Por ahora nada necesita a una persona.",
     "pipeline_heading": "Pipeline",
     "pipeline_details": "Ver veredictos y enlaces",

@@ -60,7 +60,7 @@
     "acu_left": "{remaining} left before new sessions wait for budget",
     "acu_full": "Ceiling reached: new sessions wait until you raise it or reservations are released",
     "attention_heading": "Needs a human ({count})",
-    "error_hint": "The pipeline stopped with an error. Check the history, then remove and re-add the trigger label to retry.",
+    "error_hint": "The pipeline stopped with an error and won't retry this issue on its own. Check the history, then handle the issue by hand on GitHub.",
     "attention_empty": "Nothing needs a human right now.",
     "pipeline_heading": "Pipeline",
     "pipeline_details": "See verdicts and links",

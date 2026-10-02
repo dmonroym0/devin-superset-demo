@@ -109,6 +109,43 @@ def test_demo_badge_and_zero_metered_acu_display(dashboard_client):
     assert "$0" not in cost.text
 
 
+def test_sessions_page_sorts_newest_first_without_reordering_metrics(dashboard_client):
+    client, app = dashboard_client
+    db = app.state.deps.db
+    db.upsert_seen_issue(Issue(number=303, title="Session order issue", body=""), 80)
+    for session_id, created_at in (
+        ("session-older", 100),
+        ("session-newer-a", 200),
+        ("session-newer-z", 200),
+    ):
+        db.insert_session(
+            SessionRow(
+                session_id=session_id,
+                issue_number=303,
+                stage=Stage.FIX,
+                status="running",
+                status_detail=None,
+                devin_mode=None,
+                max_acu_limit=15,
+                acus_consumed=0,
+                url=None,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+
+    metrics_before = [row["session_id"] for row in client.get("/metrics.json").json()["sessions"]]
+    assert metrics_before == ["session-older", "session-newer-a", "session-newer-z"]
+
+    page = client.get("/sessions")
+    positions = [
+        page.text.index(session_id) for session_id in ("session-newer-z", "session-newer-a", "session-older")
+    ]
+    assert positions == sorted(positions)
+    metrics_after = [row["session_id"] for row in client.get("/metrics.json").json()["sessions"]]
+    assert metrics_after == metrics_before
+
+
 class _AssetParser(HTMLParser):
     def __init__(self):
         super().__init__()

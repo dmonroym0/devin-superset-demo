@@ -255,6 +255,7 @@ def test_malformed_structured_output_is_normalized_without_raising():
     ]
     for number, output in enumerate(outputs, start=10):
         _add_issue(db, number)
+        assert db.transition(number, [IssueState.SEEN], IssueState.TRIAGING, 11)
         _add_session(db, f"triage-{number}", number, Stage.TRIAGE, 11, 12, output)
 
     issues = compute(db, budget, settings, now=20)["issues_detail"]
@@ -448,4 +449,80 @@ def test_all_preexisting_metrics_keys_keep_their_values():
         "first_seen_at": "1970-01-01T00:00:01+00:00",
         "pr_opened_at": "1970-01-01T00:00:03+00:00",
     }
+    db.close()
+
+
+def test_unsettled_terminal_sessions_have_terminal_stage_states_and_no_live_duration():
+    db, budget, settings = _make_db()
+
+    _add_issue(db, 50)
+    assert db.transition(50, [IssueState.SEEN], IssueState.TRIAGING, 20)
+    _add_session(db, "triage-error", 50, Stage.TRIAGE, 20)
+    assert db.transition(50, [IssueState.TRIAGING], IssueState.ERROR, 25, last_error="triage failed")
+
+    _add_issue(db, 51)
+    assert db.transition(51, [IssueState.SEEN], IssueState.TRIAGING, 20)
+    _add_session(db, "triage-human", 51, Stage.TRIAGE, 20)
+    assert db.transition(51, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, 25)
+
+    _add_issue(db, 52)
+    assert db.transition(52, [IssueState.SEEN], IssueState.TRIAGING, 20)
+    _add_session(db, "triage-fix-error", 52, Stage.TRIAGE, 20, 30, _triage_output())
+    _triaged(db, 52)
+    db.add_event(52, "routed", "fix: eligible", 31)
+    assert db.transition(52, [IssueState.TRIAGED], IssueState.FIXING, 32)
+    _add_session(db, "fix-error", 52, Stage.FIX, 32)
+    assert db.transition(52, [IssueState.FIXING], IssueState.ERROR, 40, last_error="fix failed")
+
+    issues = {issue["number"]: issue for issue in compute(db, budget, settings, now=100)["issues_detail"]}
+    assert issues[50]["stage_track"][1]["state"] == "failed"
+    assert issues[50]["stage_track"][1]["duration_s"] is None
+    assert issues[51]["stage_track"][1]["state"] == "stopped"
+    assert issues[51]["stage_track"][1]["duration_s"] is None
+    assert issues[52]["stage_track"][3]["state"] == "failed"
+    assert issues[52]["stage_track"][3]["duration_s"] is None
+    db.close()
+
+
+def test_relabelled_cancelled_issue_discards_the_previous_run():
+    db, budget, settings = _make_db()
+    _add_issue(db, 53)
+    assert db.transition(53, [IssueState.SEEN], IssueState.TRIAGING, 20)
+    _add_session(db, "old-triage", 53, Stage.TRIAGE, 20, 30, _triage_output())
+    _triaged(db, 53, at=30)
+    db.add_event(53, "routed", "fix: previous run", 31)
+    assert db.transition(53, [IssueState.TRIAGED], IssueState.FIXING, 32)
+    _add_session(db, "old-fix", 53, Stage.FIX, 32, 35)
+    assert db.transition(53, [IssueState.FIXING], IssueState.CANCELLED, 36)
+
+    accepted, is_new = db.accept_delivery(
+        "relabel-cancelled-53",
+        "issues",
+        "labeled",
+        Issue(number=53, title="Relabeled issue", body=""),
+        40,
+    )
+    assert accepted and is_new
+
+    issue = compute(db, budget, settings, now=45)["issues_detail"][0]
+    assert issue["route"] == {"action": None, "reason": None, "at": None}
+    assert issue["session_ids"] == {"triage": None, "fix": None}
+    assert issue["cves"] == []
+    assert issue["stage_track"][1]["state"] == "pending"
+    assert issue["stage_track"][2]["state"] == "pending"
+
+    assert db.transition(53, [IssueState.SEEN], IssueState.TRIAGING, 50)
+    _add_session(db, "new-triage", 53, Stage.TRIAGE, 50, structured_output=_triage_output())
+    issue = compute(db, budget, settings, now=51)["issues_detail"][0]
+    assert issue["session_ids"] == {"triage": "new-triage", "fix": None}
+    assert issue["route"] == {"action": None, "reason": None, "at": None}
+    assert issue["stage_track"][2]["state"] == "pending"
+
+    db.update_session("new-triage", settled_at=55, updated_at=55)
+    assert db.transition(53, [IssueState.TRIAGING], IssueState.NEEDS_HUMAN, 56)
+    issue = compute(db, budget, settings, now=60)["issues_detail"][0]
+    assert issue["route"] == {"action": None, "reason": None, "at": None}
+    assert issue["session_ids"]["fix"] is None
+    assert issue["stage_track"][1]["state"] == "stopped"
+    assert issue["stage_track"][2]["state"] == "skipped"
     db.close()
