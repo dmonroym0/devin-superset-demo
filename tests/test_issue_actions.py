@@ -191,3 +191,29 @@ async def test_queued_budget_comment_retries_after_github_error(action_context, 
 
     await clear_queued_budget(deps, 1)
     assert not queued_budget_retry_due(deps.db, 1)
+
+
+@pytest.mark.asyncio
+async def test_queued_budget_clear_records_only_successful_removal(action_context, monkeypatch):
+    deps, github = action_context
+    original_remove_label = github.remove_label
+    attempts = 0
+
+    async def fail_once(number, label):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise GitHubError(503, "DELETE", f"/repos/dmonroym0/superset/issues/{number}/labels/{label}")
+        await original_remove_label(number, label)
+
+    monkeypatch.setattr(github, "remove_label", fail_once)
+    await mark_queued_budget(deps, 1, committed=120, ceiling=120)
+    await clear_queued_budget(deps, 1)
+    assert not any(event.kind == "queued_budget_cleared" for event in deps.db.list_events(issue_number=1))
+
+    await mark_queued_budget(deps, 1, committed=120, ceiling=120)
+    assert len(github.comments[1]) == 1
+
+    await clear_queued_budget(deps, 1)
+    assert LABEL_QUEUED_BUDGET not in github.labels(1)
+    assert any(event.kind == "queued_budget_cleared" for event in deps.db.list_events(issue_number=1))

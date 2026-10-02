@@ -63,36 +63,39 @@ def register(app: FastAPI, deps: Deps) -> None:
             and not isinstance(issue_data.get("number"), bool)
             else None
         )
-        if not deps.db.record_delivery(
-            delivery_id,
-            event,
-            action,
-            issue_number,
-            deps.clock(),
-        ):
+
+        def duplicate_response() -> JSONResponse:
             return JSONResponse({"status": "duplicate"})
 
+        def record_nonaccepted_response(response: JSONResponse) -> JSONResponse:
+            if not deps.db.record_delivery(delivery_id, event, action, issue_number, deps.clock()):
+                return duplicate_response()
+            return response
+
+        if deps.db.has_delivery(delivery_id):
+            return duplicate_response()
+
         if event != "issues":
-            return JSONResponse({"status": "ignored", "reason": "event"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "event"}))
         if action != "labeled":
-            return JSONResponse({"status": "ignored", "reason": "action"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "action"}))
         label_data = payload.get("label")
         if not isinstance(label_data, dict):
-            return JSONResponse({"status": "ignored", "reason": "label"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "label"}))
         if label_data.get("name") != deps.settings.trigger_label:
-            return JSONResponse({"status": "ignored", "reason": "label"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "label"}))
         repository = payload.get("repository")
         if not isinstance(repository, dict) or repository.get("full_name") != FORK_REPO:
-            return JSONResponse({"status": "ignored", "reason": "repository"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "repository"}))
         if not isinstance(issue_data, dict):
-            return JSONResponse({"status": "ignored", "reason": "pull_request"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "pull_request"}))
         if "pull_request" in issue_data:
-            return JSONResponse({"status": "ignored", "reason": "pull_request"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "pull_request"}))
         state = issue_data.get("state")
         if isinstance(state, str) and state != "open":
-            return JSONResponse({"status": "ignored", "reason": "closed"})
+            return record_nonaccepted_response(JSONResponse({"status": "ignored", "reason": "closed"}))
         if issue_number is None or issue_number <= 0:
-            return JSONResponse({"error": "invalid json"}, status_code=400)
+            return record_nonaccepted_response(JSONResponse({"error": "invalid json"}, status_code=400))
 
         title = issue_data.get("title")
         title = title if isinstance(title, str) else ""
@@ -121,7 +124,17 @@ def register(app: FastAPI, deps: Deps) -> None:
             repo=repository["full_name"],
         )
         now = deps.clock()
-        new = deps.db.upsert_seen_issue(issue, now)
-        deps.db.add_event(issue_number, "webhook_accepted", f"delivery {delivery_id}", now)
+        is_new_delivery, is_new_issue = deps.db.accept_delivery(
+            delivery_id,
+            event,
+            action,
+            issue,
+            now,
+        )
+        if not is_new_delivery:
+            return duplicate_response()
         deps.wake.set()
-        return JSONResponse({"status": "accepted", "issue": issue_number, "new": new}, status_code=202)
+        return JSONResponse(
+            {"status": "accepted", "issue": issue_number, "new": is_new_issue},
+            status_code=202,
+        )

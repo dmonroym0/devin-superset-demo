@@ -102,8 +102,12 @@ async def _add_labels(deps: Deps, number: int, labels: Sequence[str]) -> None:
     await _call(deps, number, lambda: deps.github.add_labels(number, list(labels)))
 
 
-async def _remove_label(deps: Deps, number: int, label: str) -> None:
-    await _call(deps, number, lambda: deps.github.remove_label(number, label))
+async def _remove_label(deps: Deps, number: int, label: str) -> bool:
+    async def remove() -> bool:
+        await deps.github.remove_label(number, label)
+        return True
+
+    return await _call(deps, number, remove) is True
 
 
 async def _comment(deps: Deps, number: int, body: str) -> str | None:
@@ -185,8 +189,8 @@ async def mark_queued_budget(deps: Deps, number: int, committed: int, ceiling: i
 
 
 async def clear_queued_budget(deps: Deps, number: int) -> None:
-    await _remove_label(deps, number, LABEL_QUEUED_BUDGET)
-    deps.db.add_event(number, "queued_budget_cleared", "label removed", deps.clock())
+    if await _remove_label(deps, number, LABEL_QUEUED_BUDGET):
+        deps.db.add_event(number, "queued_budget_cleared", "label removed", deps.clock())
 
 
 def queued_budget_retry_due(db: Database, number: int) -> bool:

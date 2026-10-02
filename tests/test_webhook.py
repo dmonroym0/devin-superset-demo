@@ -78,6 +78,36 @@ def test_valid_webhook_is_deduped_and_persists_issue(tmp_path, fake_devin):
         assert len(accepted) == 1
 
 
+def test_failed_webhook_accept_can_retry_same_delivery(tmp_path, fake_devin):
+    app = _app(tmp_path, fake_devin)
+    db = app.state.deps.db
+    body = _payload(7)
+    headers = _headers(body, delivery="delivery-retry-after-failure")
+    with TestClient(
+        app,
+        client=("127.0.0.1", 50000),
+        raise_server_exceptions=False,
+    ) as client:
+        db._connection.execute(
+            "CREATE TRIGGER fail_issue BEFORE INSERT ON issues BEGIN SELECT RAISE(ABORT, 'boom'); END"
+        )
+        db._connection.commit()
+        first = client.post("/webhooks/github", content=body, headers=headers)
+        assert first.status_code >= 500
+        assert db.has_delivery("delivery-retry-after-failure") is False
+        assert db.get_issue(7) is None
+        assert db.list_events(issue_number=7) == []
+
+        db._connection.execute("DROP TRIGGER fail_issue")
+        db._connection.commit()
+        retry = client.post("/webhooks/github", content=body, headers=headers)
+        assert retry.status_code == 202
+        assert retry.json() == {"status": "accepted", "issue": 7, "new": True}
+        duplicate = client.post("/webhooks/github", content=body, headers=headers)
+        assert duplicate.status_code == 200
+        assert duplicate.json() == {"status": "duplicate"}
+
+
 def test_webhook_rejects_signatures_and_oversized_payloads(tmp_path, fake_devin):
     app = _app(tmp_path, fake_devin)
     body = _payload(5)

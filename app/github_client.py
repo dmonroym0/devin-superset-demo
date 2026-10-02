@@ -63,6 +63,7 @@ class HttpGitHubClient:
         json: object = None,
         params: dict[str, object] | None = None,
         ok_statuses: Sequence[int] = (),
+        retry_post: bool = False,
     ) -> httpx.Response:
         safe_path = urlsplit(path).path or path.split("?", 1)[0]
         for attempt in range(2):
@@ -73,7 +74,7 @@ class HttpGitHubClient:
                 raise GitHubError(0, method, safe_path) from err
             logger.info("GitHub request %s %s -> %s", method, safe_path, response.status_code)
             if (
-                method in {"GET", "PUT", "PATCH", "DELETE"}
+                (method in {"GET", "PUT", "PATCH", "DELETE"} or (method == "POST" and retry_post))
                 and response.status_code in {502, 503, 504}
                 and attempt == 0
             ):
@@ -158,6 +159,7 @@ class HttpGitHubClient:
                 f"{self._repo_path}/labels",
                 json={"name": spec.name, "color": spec.color, "description": spec.description},
                 ok_statuses=(422,),
+                retry_post=True,
             )
             if response.status_code == 422:
                 try:

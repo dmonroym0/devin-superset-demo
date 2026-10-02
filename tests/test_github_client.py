@@ -90,6 +90,25 @@ async def test_ensure_labels_creates_missing_and_tolerates_already_exists():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_ensure_labels_retries_transient_post_once():
+    respx.get(f"{BASE}{REPO_PATH}/labels").mock(return_value=httpx.Response(200, json=[]))
+    post = respx.post(f"{BASE}{REPO_PATH}/labels").mock(
+        side_effect=[
+            httpx.Response(503),
+            httpx.Response(201, json={"name": "new-label"}),
+        ]
+    )
+    client = HttpGitHubClient(_settings())
+    try:
+        created = await client.ensure_labels([LabelSpec("new-label", "222222", "create")])
+        assert created == ["new-label"]
+        assert post.call_count == 2
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_remove_404_and_retry_transient_status_once():
     remove = respx.delete(f"{BASE}{REPO_PATH}/issues/4/labels/devin%3Afixplease").mock(
         return_value=httpx.Response(404)

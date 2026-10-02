@@ -172,6 +172,51 @@ class Database:
             self._connection.commit()
             return cursor.rowcount == 1
 
+    def has_delivery(self, delivery_id: str) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT 1 FROM deliveries WHERE delivery_id=?", (delivery_id,)
+            ).fetchone()
+        return row is not None
+
+    def accept_delivery(
+        self,
+        delivery_id: str,
+        event: str,
+        action: str,
+        issue: Issue,
+        now: float,
+    ) -> tuple[bool, bool]:
+        with self._lock:
+            try:
+                delivery = self._connection.execute(
+                    "INSERT OR IGNORE INTO deliveries(delivery_id, event, action, issue_number, received_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (delivery_id, event, action, issue.number, now),
+                )
+                if delivery.rowcount != 1:
+                    self._connection.rollback()
+                    return False, False
+                issue_cursor = self._connection.execute(
+                    "INSERT OR IGNORE INTO issues(number, title, state, first_seen_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (issue.number, issue.title, IssueState.SEEN.value, now, now),
+                )
+                is_new_issue = issue_cursor.rowcount == 1
+                if not is_new_issue:
+                    self._connection.execute(
+                        "UPDATE issues SET title=? WHERE number=?", (issue.title, issue.number)
+                    )
+                self._connection.execute(
+                    "INSERT INTO events(issue_number, kind, detail, created_at) VALUES (?, ?, ?, ?)",
+                    (issue.number, "webhook_accepted", f"delivery {delivery_id}", now),
+                )
+                self._connection.commit()
+                return True, is_new_issue
+            except Exception:
+                self._connection.rollback()
+                raise
+
     def upsert_seen_issue(self, issue: Issue, now: float) -> bool:
         with self._lock:
             cursor = self._connection.execute(
