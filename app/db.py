@@ -13,6 +13,10 @@ from typing import Any, ClassVar
 from app.models import BumpKind, Issue, IssueState, Stage
 
 
+class DatabaseModeMismatch(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class IssueRow:
     number: int
@@ -100,6 +104,10 @@ class Database:
 
     def init_schema(self) -> None:
         schema = """
+        CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS deliveries (
             delivery_id TEXT PRIMARY KEY,
             event TEXT NOT NULL,
@@ -166,6 +174,20 @@ class Database:
             if "create_started_at" not in columns:
                 self._connection.execute("ALTER TABLE ledger ADD COLUMN create_started_at REAL")
                 self._connection.commit()
+
+    def claim_mode(self, mode: str) -> None:
+        with self._lock:
+            row = self._connection.execute("SELECT value FROM meta WHERE key='mode'").fetchone()
+            if row is None:
+                self._connection.execute("INSERT INTO meta(key, value) VALUES ('mode', ?)", (mode,))
+                self._connection.commit()
+                return
+            stored = row["value"]
+            if stored != mode:
+                raise DatabaseModeMismatch(
+                    f"database {self.path} belongs to {stored} mode, refusing to start in {mode}; "
+                    "use a different DB_PATH/DATA_DIR"
+                )
 
     def record_delivery(
         self, delivery_id: str, event: str, action: str, issue_number: int | None, now: float

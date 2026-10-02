@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import Settings
 from app.db import SessionRow
 from app.fake_devin import FakeDevin as ScenarioFakeDevin
 from app.fake_github import FakeGitHub as SeededFakeGitHub
@@ -58,6 +59,7 @@ def test_health_metrics_labels_and_lifecycle(fake_github, fake_devin, test_setti
             "needs_human",
             "not_reachable",
             "queued_budget",
+            "cancelled",
             "error",
         }
         assert set(payload["acu"]) == {"committed", "ceiling", "remaining", "consumed_metered"}
@@ -249,3 +251,66 @@ async def test_startup_readopts_attached_triage_session_and_processes_it(test_se
         ]
         assert len(fix_requests) == 1
         assert deps.budget.committed() >= settings.triage_acu_cap
+
+
+def test_demo_and_live_use_distinct_databases_in_same_data_dir(tmp_path):
+    data_dir = str(tmp_path)
+    demo_settings = Settings.from_env({"DATA_DIR": data_dir})
+    live_settings = Settings.from_env({"APP_MODE": "live", "DATA_DIR": data_dir})
+    assert demo_settings.db_path != live_settings.db_path
+
+    demo_github = SeededFakeGitHub.from_seed()
+    demo_app = create_app(
+        demo_settings,
+        github=demo_github,
+        devin=ScenarioFakeDevin.from_scenarios(),
+        clock=lambda: 100.0,
+    )
+    demo_app.state.deps.background.clear()
+
+    with TestClient(demo_app):
+        demo_app.state.deps.db.upsert_seen_issue(demo_github.issues[2], 100.0)
+        assert demo_app.state.deps.db.get_issue(2) is not None
+
+    live_app = create_app(
+        live_settings,
+        github=SeededFakeGitHub.from_seed(),
+        devin=ScenarioFakeDevin.from_scenarios(),
+        clock=lambda: 100.0,
+    )
+    live_app.state.deps.background.clear()
+
+    with TestClient(live_app) as client:
+        assert client.get("/metrics.json").json()["issues"]["seen"] == 0
+
+
+def test_startup_rejects_database_claimed_by_another_mode(tmp_path):
+    db_path = str(tmp_path / "shared.db")
+    demo_settings = Settings.from_env({"DB_PATH": db_path})
+    demo_app = create_app(
+        demo_settings,
+        github=SeededFakeGitHub.from_seed(),
+        devin=ScenarioFakeDevin.from_scenarios(),
+    )
+    demo_app.state.deps.background.clear()
+
+    with TestClient(demo_app):
+        pass
+
+    live_settings = Settings.from_env({"APP_MODE": "live", "DB_PATH": db_path})
+    live_app = create_app(
+        live_settings,
+        github=SeededFakeGitHub.from_seed(),
+        devin=ScenarioFakeDevin.from_scenarios(),
+    )
+    live_app.state.deps.background.clear()
+
+    with pytest.raises(Exception) as error:
+        with TestClient(live_app):
+            pass
+
+    assert type(error.value).__name__ == "DatabaseModeMismatch"
+    assert str(error.value) == (
+        f"database {db_path} belongs to demo mode, refusing to start in live; "
+        "use a different DB_PATH/DATA_DIR"
+    )

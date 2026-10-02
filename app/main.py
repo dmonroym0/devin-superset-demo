@@ -40,6 +40,7 @@ def create_app(
         tasks: list[asyncio.Task] = []
         try:
             deps.db.init_schema()
+            deps.db.claim_mode(settings.mode.value)
             try:
                 created_labels = await deps.github.ensure_labels(MANAGED_LABELS)
                 if created_labels:

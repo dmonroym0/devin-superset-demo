@@ -145,7 +145,7 @@ class Settings:
             devin_mode_triage=optional("DEVIN_MODE_TRIAGE"),
             devin_mode_fix=optional("DEVIN_MODE_FIX"),
             trigger_label="devin:fixplease",
-            db_path=env.get("DB_PATH", "data/forkfix.db"),
+            db_path=env.get("DB_PATH") or f"{env.get('DATA_DIR', 'data')}/forkfix-{mode.value}.db",
             host=env.get("HOST", "0.0.0.0"),
             port=port,
             sweep_allowed_cidrs=sweep_allowed_cidrs,
