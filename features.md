@@ -13,6 +13,7 @@ Requirement IDs: R1–R15 are the original requirements, A–K the approved chan
 | ACU ledger (caps 5/15, ceiling 120 across all issues) | built | app/budget.py | `pytest tests/test_budget.py` | R6, B |
 | Metrics JSON | built | app/metrics.py, app/main.py | `curl localhost:8000/metrics.json` | R7, K |
 | Playbooks as code (text) | built | playbooks/*.md | read them | R8 |
+| Schema drift check (local copy vs playbook schema) | built | app/schema_check.py | `pytest tests/test_schema_check.py` | E |
 | features.md rule, skill, PR template checkbox | built | features.md, .agents/skills/features-md/SKILL.md, .github/pull_request_template.md | read them | R10, F |
 | DEMO seed data (real issues #1–#5) + scripted outcomes | built | app/demo/seed_issues.json, app/demo/scenarios.json | read them | G |
 
