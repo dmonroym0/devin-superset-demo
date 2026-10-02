@@ -137,9 +137,11 @@ def _normalized_cves(structured_output: object) -> list[dict]:
                     "confidence": confidence,
                     "evidence": evidence,
                     "gating": {
-                        "feature_flags": _string_list(gating.get("feature_flags")),
-                        "config_options": _string_list(gating.get("config_options")),
-                        "required_permissions": _string_list(gating.get("required_permissions")),
+                        "feature_flags": _gate_list(gating.get("feature_flags"), "feature_flags"),
+                        "config_options": _gate_list(gating.get("config_options"), "config_options"),
+                        "required_permissions": _gate_list(
+                            gating.get("required_permissions"), "required_permissions"
+                        ),
                     },
                     "reachable_by_default": (
                         raw.get("reachable_by_default")
@@ -158,6 +160,39 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
+
+
+def _gate_list(value: object, kind: str) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    gates = []
+    for item in value:
+        if isinstance(item, str):
+            gates.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+
+        if kind == "feature_flags":
+            name = item.get("name")
+            if not isinstance(name, str):
+                continue
+            default = item.get("default")
+            gates.append(f"{name}={'True' if default else 'False'}" if isinstance(default, bool) else name)
+        elif kind == "config_options":
+            name = item.get("name")
+            if not isinstance(name, str):
+                continue
+            default = item.get("default")
+            gates.append(f"{name}={default}" if isinstance(default, str) else name)
+        elif kind == "required_permissions":
+            permission = item.get("permission")
+            view = item.get("view")
+            min_role = item.get("min_role")
+            if all(isinstance(value, str) for value in (permission, view, min_role)):
+                gates.append(f"{permission} on {view} ({min_role})")
+    return gates
 
 
 def _caveats(structured_output: object) -> list[str]:

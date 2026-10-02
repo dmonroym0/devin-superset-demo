@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.db import SessionRow
 from app.i18n import flatten
 from app.main import create_app
-from app.models import Issue, Mode, Stage
+from app.models import Issue, IssueState, Mode, Stage
 
 ROOT = Path(__file__).parents[1]
 HTML_PAGES = ("/", "/pipeline", "/sessions", "/cost")
@@ -77,6 +77,39 @@ def test_issue_views_localize_raw_log_and_missing_issue(dashboard_client):
         missing = client.get("/issues/999999", headers={"Accept-Language": header})
         assert missing.status_code == 404
         assert _catalog(locale)["issue.missing_title"] in html.unescape(missing.text)
+
+
+def test_demo_issue_page_shows_formatted_gates(dashboard_client):
+    client, app = dashboard_client
+    db = app.state.deps.db
+    scenario = json.loads((ROOT / "app/demo/scenarios.json").read_text())["issues"]["3"]
+    output = scenario["triage"]["structured_output"]
+    db.upsert_seen_issue(Issue(number=3, title="DEMO issue 3", body=""), 1_699_999_900)
+    assert db.transition(3, [IssueState.SEEN], IssueState.TRIAGING, 1_699_999_910)
+    db.insert_session(
+        SessionRow(
+            session_id="demo-triage-3",
+            issue_number=3,
+            stage=Stage.TRIAGE,
+            status="finished",
+            status_detail="finished",
+            devin_mode="interactive",
+            max_acu_limit=5,
+            acus_consumed=0,
+            url=None,
+            created_at=1_699_999_910,
+            updated_at=1_699_999_960,
+            settled_at=1_699_999_960,
+            structured_output=output,
+        )
+    )
+
+    response = client.get("/issues/3", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    assert "ALERT_REPORTS=False" in response.text
+    assert "ALERT_REPORT_WEBHOOK=False" in response.text
+    assert _catalog("en")["issue.default_off"] in response.text
 
 
 def test_demo_badge_and_zero_metered_acu_display(dashboard_client):
